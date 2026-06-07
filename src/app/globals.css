@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens. Channel-only HSL values (no `hsl()` wrapper) so Tailwind can
+ * compose them with its `<alpha-value>` placeholder. The application defaults to
+ * the dark theme (the workspace shell sets `.dark` on <html>); the light scope is
+ * retained for completeness and future theming.
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 222 47% 11%;
+    --radius: 0.5rem;
+
+    --state-idle: 215 16% 47%;
+    --state-running: 38 92% 50%;
+    --state-completed: 142 71% 45%;
+    --state-failed: 0 72% 51%;
+
+    --node-agent: 217 91% 60%;
+    --node-llm-core: 262 83% 58%;
+    --node-prompt-template: 173 80% 40%;
+    --node-classifier: 32 95% 44%;
+    --node-vector-db: 330 81% 60%;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 96%;
+    --card: 222 45% 10%;
+    --card-foreground: 210 40% 96%;
+    --popover: 222 45% 10%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 210 40% 96%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 19%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 210 40% 96%;
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 213 27% 70%;
+
+    --state-idle: 215 16% 57%;
+    --state-running: 38 92% 55%;
+    --state-completed: 142 71% 50%;
+    --state-failed: 0 72% 62%;
+
+    --node-agent: 217 91% 65%;
+    --node-llm-core: 262 83% 68%;
+    --node-prompt-template: 173 70% 50%;
+    --node-classifier: 32 95% 55%;
+    --node-vector-db: 330 81% 68%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/*
+ * React Flow surface integration. The library's base stylesheet is imported in
+ * the root layout; these overrides bind its CSS variables to the design tokens
+ * so the canvas chrome (background dots, controls, attribution) matches the theme.
+ */
+@layer components {
+  .react-flow {
+    --xy-background-color: hsl(var(--background));
+    --xy-edge-stroke-default: hsl(var(--muted-foreground));
+    --xy-edge-stroke-selected: hsl(var(--ring));
+    --xy-connectionline-stroke-default: hsl(var(--ring));
+  }
+
+  .react-flow__attribution {
+    @apply bg-transparent text-[10px] text-muted-foreground/60;
+  }
+
+  .react-flow__handle {
+    @apply size-2 rounded-full border border-background bg-muted-foreground;
+  }
+
+  .react-flow__handle-connecting {
+    @apply bg-state-running;
+  }
+}

@@ -1,0 +1,117 @@
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# ---------------------------------------------------------------------------
+# Next.js / build output
+# ---------------------------------------------------------------------------
+/.next/
+/out/
+/build
+/dist
+next-env.d.ts
+
+# ---------------------------------------------------------------------------
+# Environment & secrets  (nada de esto debe llegar a GitHub)
+# ---------------------------------------------------------------------------
+# Ignora todos los .env salvo la plantilla pública .env.example
+.env
+.env.*
+!.env.example
+
+# Claves privadas, certificados y material criptográfico
+*.pem
+*.key
+*.crt
+*.cert
+*.cer
+*.der
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# Credenciales y tokens de servicios / nube
+**/secrets/
+**/credentials/
+*.secret
+*.secrets
+secrets.*
+credentials.json
+service-account*.json
+gcp-*.json
+aws.json
+.aws/
+.azure/
+.gcloud/
+.netrc
+.npmrc.local
+.terraform/
+*.tfvars
+*.tfstate
+*.tfstate.*
+
+# ---------------------------------------------------------------------------
+# Logs & debug
+# ---------------------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+logs/
+
+# ---------------------------------------------------------------------------
+# Test / coverage
+# ---------------------------------------------------------------------------
+/coverage
+*.lcov
+.nyc_output
+
+# ---------------------------------------------------------------------------
+# Tooling caches
+# ---------------------------------------------------------------------------
+*.tsbuildinfo
+.eslintcache
+.cache/
+.turbo
+.swc/
+
+# ---------------------------------------------------------------------------
+# Deploy platforms
+# ---------------------------------------------------------------------------
+.vercel
+.netlify
+
+# ---------------------------------------------------------------------------
+# Editor / IDE
+# ---------------------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+
+# ---------------------------------------------------------------------------
+# OS
+# ---------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
