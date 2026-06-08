@@ -106,7 +106,10 @@ const buildNodeData = <K extends NexusNodeKind>(kind: K): Extract<NexusNodeData,
     label: descriptor.displayName,
     telemetry: createPristineTelemetry(),
     config: descriptor.createDefaultConfig(),
-  } as Extract<NexusNodeData, { kind: K }>;
+    // `as unknown as` is required because TypeScript cannot prove the generic
+    // key `K` correlates with the matching union member; the shape is correct by
+    // construction (see the function-level comment).
+  } as unknown as Extract<NexusNodeData, { kind: K }>;
 };
 
 /** Resolves token pricing for nodes whose cost is model-derived; null otherwise. */

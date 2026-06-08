@@ -39,8 +39,8 @@ export const TransformationEdge = memo(
         <BaseEdge
           id={id}
           path={path}
-          markerEnd={markerEnd}
-          style={isControlEdge ? { strokeDasharray: '6 4' } : undefined}
+          {...(markerEnd !== undefined ? { markerEnd } : {})}
+          {...(isControlEdge ? { style: { strokeDasharray: '6 4' } } : {})}
         />
         {transformKind !== 'passthrough' ? (
           <EdgeLabelRenderer>
