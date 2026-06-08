@@ -15,6 +15,7 @@ import { useGraphActions, useNexusEdges, useNexusNodes } from '@/store/useGraphS
 import { type NexusEdge, type NexusNode, asNodeId } from '@/types/graph';
 
 import { CanvasToolbar } from './CanvasToolbar';
+import { ShortcutsLegend } from './ShortcutsLegend';
 import { nexusEdgeTypes, nexusNodeTypes } from './nodeTypes';
 
 /**
@@ -50,6 +51,8 @@ export const GraphCanvas = (): JSX.Element => {
       fitViewOptions={{ padding: 0.2, maxZoom: 1.5 }}
       minZoom={0.2}
       maxZoom={2}
+      // Deletion is owned by useCanvasShortcuts (single path through the store).
+      deleteKeyCode={null}
       proOptions={{ hideAttribution: false }}
     >
       <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
@@ -62,6 +65,7 @@ export const GraphCanvas = (): JSX.Element => {
       />
       <Controls className="!shadow-lg [&>button]:!border-border [&>button]:!bg-card [&>button]:!fill-foreground" />
       <CanvasToolbar />
+      <ShortcutsLegend />
     </ReactFlow>
   );
 };

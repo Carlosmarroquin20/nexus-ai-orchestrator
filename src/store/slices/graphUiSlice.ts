@@ -54,6 +54,13 @@ export interface GraphUiSlice {
   readonly removeNode: (nodeId: NodeId) => void;
   readonly setSelectedNode: (nodeId: NodeId | null) => void;
 
+  /** Deletes selected nodes and edges, plus edges orphaned by node removal. */
+  readonly deleteSelected: () => void;
+  /** Clears the visual selection flags on all elements and the tracked selection. */
+  readonly clearSelection: () => void;
+  /** Duplicates selected nodes with an offset position and pristine telemetry. */
+  readonly duplicateSelected: () => void;
+
   /**
    * Reconciles a single node's telemetry in place. Crucially, every untouched
    * node object retains its identity across the update, so React Flow's per-node
@@ -221,6 +228,74 @@ export const createGraphUiSlice: GraphUiSliceCreator = (set) => ({
     set({ nodes, edges, selectedNodeId: null }, false, 'graphUi/loadGraph'),
 
   clearGraph: () => set({ nodes: [], edges: [], selectedNodeId: null }, false, 'graphUi/clearGraph'),
+
+  deleteSelected: () =>
+    set(
+      (store) => {
+        const removedNodeIds = new Set(
+          store.nodes.filter((node) => node.selected).map((node) => node.id),
+        );
+        const hasSelectedEdges = store.edges.some((edge) => edge.selected);
+        if (removedNodeIds.size === 0 && !hasSelectedEdges) return {};
+
+        const nodes = store.nodes.filter((node) => !removedNodeIds.has(node.id));
+        const edges = store.edges.filter(
+          (edge) =>
+            !edge.selected &&
+            !removedNodeIds.has(edge.source) &&
+            !removedNodeIds.has(edge.target),
+        );
+        const selectedNodeId =
+          store.selectedNodeId !== null && removedNodeIds.has(store.selectedNodeId)
+            ? null
+            : store.selectedNodeId;
+        return { nodes, edges, selectedNodeId };
+      },
+      false,
+      'graphUi/deleteSelected',
+    ),
+
+  clearSelection: () =>
+    set(
+      (store) => ({
+        // Preserve array/element references when nothing is selected so the
+        // selective-render contract holds (no spurious canvas re-render).
+        nodes: store.nodes.some((node) => node.selected)
+          ? store.nodes.map((node) =>
+              node.selected ? (({ ...node, selected: false }) as NexusNode) : node,
+            )
+          : store.nodes,
+        edges: store.edges.some((edge) => edge.selected)
+          ? store.edges.map((edge) =>
+              edge.selected ? ({ ...edge, selected: false }) : edge,
+            )
+          : store.edges,
+        selectedNodeId: null,
+      }),
+      false,
+      'graphUi/clearSelection',
+    ),
+
+  duplicateSelected: () =>
+    set(
+      (store) => {
+        const selected = store.nodes.filter((node) => node.selected);
+        if (selected.length === 0) return {};
+        const clones = selected.map(
+          (node) =>
+            ({
+              ...node,
+              id: createNodeId(),
+              position: { x: node.position.x + 32, y: node.position.y + 32 },
+              selected: false,
+              data: { ...node.data, telemetry: createPristineTelemetry() },
+            }) as NexusNode,
+        );
+        return { nodes: [...store.nodes, ...clones] };
+      },
+      false,
+      'graphUi/duplicateSelected',
+    ),
 
   updateNodeTelemetry: (nodeId, state, patch) =>
     set(

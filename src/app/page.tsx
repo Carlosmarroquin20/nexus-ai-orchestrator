@@ -6,6 +6,7 @@ import { GraphCanvas } from '@/components/canvas/GraphCanvas';
 import { InspectorPanel } from '@/components/inspector/InspectorPanel';
 import { WorkspaceActions } from '@/components/shared/WorkspaceActions';
 import { WorkspaceHeader } from '@/components/shared/WorkspaceHeader';
+import { useCanvasShortcuts } from '@/hooks/useCanvasShortcuts';
 import { useGraphAutoPersist } from '@/hooks/useGraphPersistence';
 import { useTelemetryStream } from '@/hooks/useTelemetryStream';
 
@@ -22,6 +23,7 @@ import { useTelemetryStream } from '@/hooks/useTelemetryStream';
 export default function WorkspacePage(): JSX.Element {
   // Persist the graph to localStorage and rehydrate it on load.
   useGraphAutoPersist();
+  useCanvasShortcuts();
   useTelemetryStream({
     url: process.env['NEXT_PUBLIC_TELEMETRY_STREAM_URL'] ?? null,
   });
