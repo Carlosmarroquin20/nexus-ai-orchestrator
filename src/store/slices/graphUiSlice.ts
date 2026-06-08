@@ -53,6 +53,8 @@ export interface GraphUiSlice {
   readonly addNode: (kind: NexusNodeKind, position: XYPosition) => NodeId;
   readonly removeNode: (nodeId: NodeId) => void;
   readonly setSelectedNode: (nodeId: NodeId | null) => void;
+  /** Selects a single node exclusively (canvas highlight + tracked selection). */
+  readonly selectNode: (nodeId: NodeId) => void;
 
   /** Deletes selected nodes and edges, plus edges orphaned by node removal. */
   readonly deleteSelected: () => void;
@@ -223,6 +225,25 @@ export const createGraphUiSlice: GraphUiSliceCreator = (set) => ({
 
   setSelectedNode: (nodeId) =>
     set({ selectedNodeId: nodeId }, false, 'graphUi/setSelectedNode'),
+
+  selectNode: (nodeId) =>
+    set(
+      (store) => ({
+        nodes: store.nodes.map((node) => {
+          const selected = node.id === nodeId;
+          // Preserve identity for nodes whose selection state is unchanged.
+          return (node.selected ?? false) === selected
+            ? node
+            : (({ ...node, selected }) as NexusNode);
+        }),
+        edges: store.edges.some((edge) => edge.selected)
+          ? store.edges.map((edge) => (edge.selected ? { ...edge, selected: false } : edge))
+          : store.edges,
+        selectedNodeId: nodeId,
+      }),
+      false,
+      'graphUi/selectNode',
+    ),
 
   loadGraph: (nodes, edges) =>
     set({ nodes, edges, selectedNodeId: null }, false, 'graphUi/loadGraph'),

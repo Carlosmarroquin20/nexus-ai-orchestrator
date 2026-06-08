@@ -9,6 +9,7 @@ import type { NexusNode } from '@/types/graph';
 import { useSelectedNode } from '@/store/useGraphStore';
 import { formatCostUSD, formatExactTokens, formatLatency, formatTimestamp } from '@/utils/format';
 
+import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { NodeConfigForm } from './NodeConfigForm';
 import { PayloadViewer } from './PayloadViewer';
 import { RunMetricsBar } from './RunMetricsBar';
@@ -75,6 +76,7 @@ export const InspectorPanel = (): JSX.Element => {
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-4 p-4">
           <RunMetricsBar />
+          <DiagnosticsPanel />
           {selectedNode !== null ? (
             <NodeDetail node={selectedNode} />
           ) : (
