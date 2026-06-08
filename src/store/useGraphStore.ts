@@ -62,6 +62,8 @@ const selectGraphActions = (state: GraphStore) => ({
   setSelectedNode: state.setSelectedNode,
   setNodeConfig: state.setNodeConfig,
   setNodeLabel: state.setNodeLabel,
+  loadGraph: state.loadGraph,
+  clearGraph: state.clearGraph,
   onNodesChange: state.onNodesChange,
   onEdgesChange: state.onEdgesChange,
   onConnect: state.onConnect,

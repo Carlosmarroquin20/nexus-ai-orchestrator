@@ -20,15 +20,9 @@ import {
   type TelemetryEvent,
 } from '@/types/graph';
 
+import { isFiniteNumber, isRecord, isString } from './guards';
+
 const EXECUTION_STATES = new Set<string>(['idle', 'running', 'completed', 'failed']);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value);
-
-const isString = (value: unknown): value is string => typeof value === 'string';
 
 const isExecutionState = (value: unknown): value is NodeExecutionState =>
   typeof value === 'string' && EXECUTION_STATES.has(value);

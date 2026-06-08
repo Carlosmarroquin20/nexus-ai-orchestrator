@@ -74,6 +74,11 @@ export interface GraphUiSlice {
   readonly setNodeConfig: (nodeId: NodeId, config: NexusNodeConfig) => void;
   readonly setNodeLabel: (nodeId: NodeId, label: string) => void;
 
+  /** Replaces the entire graph (persistence load / file import); clears selection. */
+  readonly loadGraph: (nodes: NexusNode[], edges: NexusEdge[]) => void;
+  /** Empties the graph and selection. */
+  readonly clearGraph: () => void;
+
   /** Resets every node to pristine telemetry; invoked at run start. */
   readonly resetTelemetry: () => void;
 }
@@ -211,6 +216,11 @@ export const createGraphUiSlice: GraphUiSliceCreator = (set) => ({
 
   setSelectedNode: (nodeId) =>
     set({ selectedNodeId: nodeId }, false, 'graphUi/setSelectedNode'),
+
+  loadGraph: (nodes, edges) =>
+    set({ nodes, edges, selectedNodeId: null }, false, 'graphUi/loadGraph'),
+
+  clearGraph: () => set({ nodes: [], edges: [], selectedNodeId: null }, false, 'graphUi/clearGraph'),
 
   updateNodeTelemetry: (nodeId, state, patch) =>
     set(
