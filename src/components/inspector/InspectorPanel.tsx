@@ -9,21 +9,13 @@ import type { NexusNode } from '@/types/graph';
 import { useSelectedNode } from '@/store/useGraphStore';
 import { formatCostUSD, formatExactTokens, formatLatency, formatTimestamp } from '@/utils/format';
 
+import { NodeConfigForm } from './NodeConfigForm';
 import { PayloadViewer } from './PayloadViewer';
 import { RunMetricsBar } from './RunMetricsBar';
 
-/** Flattens a config value to a single-line display string without per-kind branching. */
-const renderConfigValue = (value: unknown): string => {
-  if (Array.isArray(value)) return value.length === 0 ? '∅' : value.join(', ');
-  if (value === null) return 'null';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-};
-
 const NodeDetail = ({ node }: { readonly node: NexusNode }): JSX.Element => {
   const descriptor = getNodeDescriptor(node.data.kind);
-  const { telemetry, config } = node.data;
-  const configEntries = Object.entries(config);
+  const { telemetry } = node.data;
 
   return (
     <div className="flex flex-col gap-4">
@@ -55,21 +47,7 @@ const NodeDetail = ({ node }: { readonly node: NexusNode }): JSX.Element => {
 
       <Separator />
 
-      <section className="flex flex-col gap-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Configuration
-        </h4>
-        <dl className="flex flex-col gap-1.5">
-          {configEntries.map(([key, value]) => (
-            <div key={key} className="flex items-start justify-between gap-3 text-xs">
-              <dt className="shrink-0 font-medium text-muted-foreground">{key}</dt>
-              <dd className="min-w-0 break-words text-right font-mono text-foreground">
-                {renderConfigValue(value)}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      <NodeConfigForm node={node} />
 
       <Separator />
 
@@ -81,9 +59,9 @@ const NodeDetail = ({ node }: { readonly node: NexusNode }): JSX.Element => {
 
 /**
  * Right-hand inspection sidebar. Renders run-level aggregates always, and the
- * selected node's full execution trace when a node is selected. Subscribes only
- * to the selected node and active run, so it re-renders on selection changes and
- * on telemetry deltas for the selected node — never for unrelated graph mutations.
+ * selected node's full execution trace plus editable configuration when a node
+ * is selected. Subscribes only to the selected node and active run, so it
+ * re-renders on selection changes and on telemetry deltas for the selected node.
  */
 export const InspectorPanel = (): JSX.Element => {
   const selectedNode = useSelectedNode();

@@ -162,6 +162,14 @@ export interface LlmCoreNodeConfig {
   readonly topP: number;
 }
 
+/** Union of every node-variant configuration payload. */
+export type NexusNodeConfig =
+  | AgentNodeConfig
+  | VectorDbNodeConfig
+  | PromptTemplateNodeConfig
+  | ClassifierNodeConfig
+  | LlmCoreNodeConfig;
+
 /* -------------------------------------------------------------------------- */
 /* Node data payloads                                                         */
 /* -------------------------------------------------------------------------- */

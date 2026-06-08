@@ -28,6 +28,7 @@ import {
   type GraphEdgeData,
   type NexusEdge,
   type NexusNode,
+  type NexusNodeConfig,
   type NexusNodeData,
   type NexusNodeKind,
   type NodeExecutionState,
@@ -64,6 +65,14 @@ export interface GraphUiSlice {
     state: NodeExecutionState,
     patch: NodeTelemetryPatch,
   ) => void;
+
+  /**
+   * Replaces a node's configuration. The caller is responsible for passing a
+   * config whose variant matches the node's kind (the editing forms guarantee
+   * this by deriving the new config from the node's existing config).
+   */
+  readonly setNodeConfig: (nodeId: NodeId, config: NexusNodeConfig) => void;
+  readonly setNodeLabel: (nodeId: NodeId, label: string) => void;
 
   /** Resets every node to pristine telemetry; invoked at run start. */
   readonly resetTelemetry: () => void;
@@ -115,6 +124,24 @@ const buildNodeData = <K extends NexusNodeKind>(kind: K): Extract<NexusNodeData,
 /** Resolves token pricing for nodes whose cost is model-derived; null otherwise. */
 const resolvePricingForNode = (node: NexusNode): TokenPricing | null =>
   node.data.kind === NODE_KIND.LLM_CORE ? resolvePricing(node.data.config.model) : null;
+
+/**
+ * Reference-preserving single-node update. Returns a new array with only the
+ * matched node replaced (siblings retain identity), or `null` if the id is
+ * absent. This identity preservation is the precondition for React Flow's
+ * selective re-render and is shared by every node-mutation action.
+ */
+const mapNodeById = (
+  nodes: readonly NexusNode[],
+  nodeId: NodeId,
+  transform: (node: NexusNode) => NexusNode,
+): NexusNode[] | null => {
+  const index = nodes.findIndex((node) => node.id === nodeId);
+  if (index === -1) return null;
+  const next = nodes.slice();
+  next[index] = transform(nodes[index]!);
+  return next;
+};
 
 /* --------------------------------- slice ---------------------------------- */
 
@@ -188,24 +215,48 @@ export const createGraphUiSlice: GraphUiSliceCreator = (set) => ({
   updateNodeTelemetry: (nodeId, state, patch) =>
     set(
       (store) => {
-        const index = store.nodes.findIndex((node) => node.id === nodeId);
-        if (index === -1) return {}; // unknown id: preserve all references, notify nothing meaningful
-        const target = store.nodes[index]!;
-        const telemetry = reconcileTelemetry(
-          target.data.telemetry,
-          state,
-          patch,
-          Date.now(),
-          resolvePricingForNode(target),
-        );
-        const nodes = store.nodes.slice();
-        // Replace only the target reference; all sibling node objects are reused,
-        // which is the precondition for React Flow's selective re-render.
-        nodes[index] = { ...target, data: { ...target.data, telemetry } } as NexusNode;
-        return { nodes };
+        const nodes = mapNodeById(store.nodes, nodeId, (target) => {
+          const telemetry = reconcileTelemetry(
+            target.data.telemetry,
+            state,
+            patch,
+            Date.now(),
+            resolvePricingForNode(target),
+          );
+          return { ...target, data: { ...target.data, telemetry } } as NexusNode;
+        });
+        return nodes !== null ? { nodes } : {};
       },
       false,
       'graphUi/updateNodeTelemetry',
+    ),
+
+  setNodeConfig: (nodeId, config) =>
+    set(
+      (store) => {
+        const nodes = mapNodeById(
+          store.nodes,
+          nodeId,
+          (target) => ({ ...target, data: { ...target.data, config } }) as NexusNode,
+        );
+        return nodes !== null ? { nodes } : {};
+      },
+      false,
+      'graphUi/setNodeConfig',
+    ),
+
+  setNodeLabel: (nodeId, label) =>
+    set(
+      (store) => {
+        const nodes = mapNodeById(
+          store.nodes,
+          nodeId,
+          (target) => ({ ...target, data: { ...target.data, label } }) as NexusNode,
+        );
+        return nodes !== null ? { nodes } : {};
+      },
+      false,
+      'graphUi/setNodeLabel',
     ),
 
   resetTelemetry: () =>
