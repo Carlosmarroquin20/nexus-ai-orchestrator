@@ -38,6 +38,8 @@ export interface DataFlowSlice {
   /** Run ids in chronological start order; the last element is the newest run. */
   readonly runOrder: RunId[];
   readonly streamStatus: StreamStatus;
+  /** Fault-injection probability [0,1] forwarded to the execution stream. */
+  readonly failRate: number;
 
   /**
    * Resets all node telemetry, opens a new run in the `running` state, and marks
@@ -53,6 +55,8 @@ export interface DataFlowSlice {
   readonly finalizeRun: (status: TerminalRunStatus) => void;
   readonly cancelRun: () => void;
   readonly setStreamStatus: (status: StreamStatus) => void;
+  /** Sets the fault-injection probability (clamped to [0,1]). */
+  readonly setFailRate: (rate: number) => void;
 }
 
 type DataFlowSliceCreator = StateCreator<
@@ -84,6 +88,7 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
   runsById: {},
   runOrder: [],
   streamStatus: 'disconnected',
+  failRate: 0,
 
   beginRun: () => {
     get().resetTelemetry();
@@ -165,4 +170,7 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
   cancelRun: () => get().finalizeRun('cancelled'),
 
   setStreamStatus: (status) => set({ streamStatus: status }, false, 'dataFlow/setStreamStatus'),
+
+  setFailRate: (rate) =>
+    set({ failRate: Math.min(Math.max(rate, 0), 1) }, false, 'dataFlow/setFailRate'),
 });

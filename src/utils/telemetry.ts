@@ -118,6 +118,7 @@ const EMPTY_METRICS: PipelineRunMetrics = {
   aggregateCostInUSD: 0,
   nodeCount: 0,
   failedNodeCount: 0,
+  skippedNodeCount: 0,
 };
 
 /**
@@ -139,6 +140,7 @@ export const aggregateRunMetrics = (
       aggregateCostInUSD: acc.aggregateCostInUSD + t.costInUSD,
       nodeCount: acc.nodeCount + 1,
       failedNodeCount: acc.failedNodeCount + (t.state === 'failed' ? 1 : 0),
+      skippedNodeCount: acc.skippedNodeCount + (t.state === 'skipped' ? 1 : 0),
     }),
     EMPTY_METRICS,
   );

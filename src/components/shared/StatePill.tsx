@@ -33,6 +33,12 @@ const STATE_PRESENTATION: Readonly<Record<NodeExecutionState, StatePresentation>
     text: 'text-state-failed',
     surface: 'bg-state-failed/10',
   },
+  skipped: {
+    label: 'Skipped',
+    dot: 'bg-muted-foreground',
+    text: 'text-muted-foreground',
+    surface: 'bg-muted',
+  },
 };
 
 export interface StatePillProps {

@@ -37,6 +37,8 @@ export const CanvasToolbar = (): JSX.Element => {
   const autoLayout = useAutoLayout();
   const activeRun = useActiveRun();
   const streamStatus = useGraphStore((state) => state.streamStatus);
+  const failRate = useGraphStore((state) => state.failRate);
+  const setFailRate = useGraphStore((state) => state.setFailRate);
 
   const isRunning = activeRun?.status === 'running';
 
@@ -107,6 +109,26 @@ export const CanvasToolbar = (): JSX.Element => {
         <div className="mt-2 flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
           <span className={cn('size-1.5 rounded-full', STREAM_STATUS_DOT[streamStatus])} aria-hidden />
           {STREAM_STATUS_LABEL[streamStatus]}
+        </div>
+
+        <div className="mt-2 flex flex-col gap-1 px-1">
+          <label
+            htmlFor="fault-rate"
+            className="flex items-center justify-between text-[10px] font-medium uppercase tracking-wider text-muted-foreground"
+          >
+            <span>Fault injection</span>
+            <span className="tabular-nums">{Math.round(failRate * 100)}%</span>
+          </label>
+          <input
+            id="fault-rate"
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(failRate * 100)}
+            onChange={(event) => setFailRate(Number(event.currentTarget.value) / 100)}
+            className="h-1 w-full cursor-pointer accent-state-running"
+          />
         </div>
       </div>
     </Panel>

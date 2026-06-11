@@ -160,6 +160,28 @@ export async function GET(request: Request): Promise<Response> {
     topologicalOrder(descriptor.nodes, descriptor.edges) ?? descriptor.nodes.map((node) => node.id);
   const kindById = new Map(descriptor.nodes.map((node) => [node.id, node.kind]));
 
+  const outgoing = new Map<string, string[]>();
+  for (const edge of descriptor.edges) {
+    const bucket = outgoing.get(edge.source);
+    if (bucket === undefined) outgoing.set(edge.source, [edge.target]);
+    else bucket.push(edge.target);
+  }
+
+  /** Transitive descendants of a node (the subgraph that cannot run if it fails). */
+  const descendantsOf = (start: string): Set<string> => {
+    const result = new Set<string>();
+    const stack = [...(outgoing.get(start) ?? [])];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (result.has(current)) continue;
+      result.add(current);
+      for (const next of outgoing.get(current) ?? []) {
+        if (!result.has(next)) stack.push(next);
+      }
+    }
+    return result;
+  };
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -186,9 +208,17 @@ export async function GET(request: Request): Promise<Response> {
       };
 
       let outcome: RunOutcome = 'completed';
+      const skipped = new Set<string>();
 
       for (const nodeId of order) {
         if (aborted) break;
+
+        // Downstream of an upstream failure: report as skipped without executing.
+        if (skipped.has(nodeId)) {
+          sendEvent(buildEvent(runId, nodeId, 'skipped', {}));
+          continue;
+        }
+
         const kind = kindById.get(nodeId) ?? 'PROMPT_TEMPLATE';
 
         sendEvent(buildEvent(runId, nodeId, 'running', { inputPayload: { phase: 'invoke' } }));
@@ -202,7 +232,9 @@ export async function GET(request: Request): Promise<Response> {
             }),
           );
           outcome = 'failed';
-          break; // halt downstream execution on failure
+          // Mark the transitive descendants as skipped; independent branches run on.
+          for (const descendant of descendantsOf(nodeId)) skipped.add(descendant);
+          continue;
         }
 
         const metrics = simulateMetrics(kind);

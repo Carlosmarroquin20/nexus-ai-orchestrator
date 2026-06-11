@@ -42,6 +42,7 @@ export const NexusNodeView = memo(({ data, selected }: NodeProps<NexusNode>): JS
         'w-60 rounded-lg border border-l-4 bg-card text-card-foreground shadow-sm transition-shadow',
         selected ? 'ring-2 ring-ring' : 'ring-0',
         telemetry.state === 'running' && 'shadow-[0_0_0_1px_hsl(var(--state-running)/0.4)]',
+        telemetry.state === 'skipped' && 'opacity-60',
       )}
       style={{ borderLeftColor: accent }}
     >

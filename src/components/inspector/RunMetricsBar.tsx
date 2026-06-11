@@ -51,6 +51,11 @@ export const RunMetricsBar = (): JSX.Element => {
           value={`${metrics.failedNodeCount} / ${metrics.nodeCount}`}
           tone={metrics.failedNodeCount > 0 ? 'critical' : 'success'}
         />
+        <MetricStat
+          label="Skipped nodes"
+          value={`${metrics.skippedNodeCount} / ${metrics.nodeCount}`}
+          tone={metrics.skippedNodeCount > 0 ? 'warning' : 'default'}
+        />
       </div>
     </div>
   );

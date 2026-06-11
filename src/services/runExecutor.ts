@@ -56,6 +56,7 @@ export const startRun = (): void => {
   const runId = store.beginRun();
   const descriptor = buildDescriptor(store.nodes, store.edges);
   const params = new URLSearchParams({ runId, graph: JSON.stringify(descriptor) });
+  if (store.failRate > 0) params.set('failRate', String(store.failRate));
 
   store.setStreamStatus('connecting');
   const source = new EventSource(`${STREAM_ENDPOINT}?${params.toString()}`);

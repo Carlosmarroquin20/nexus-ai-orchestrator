@@ -66,7 +66,7 @@ export type NexusNodeKind = (typeof NODE_KIND)[keyof typeof NODE_KIND];
 /* Execution telemetry                                                        */
 /* -------------------------------------------------------------------------- */
 
-export type NodeExecutionState = 'idle' | 'running' | 'completed' | 'failed';
+export type NodeExecutionState = 'idle' | 'running' | 'completed' | 'failed' | 'skipped';
 
 /**
  * Structured failure descriptor attached to telemetry when `state === 'failed'`.
@@ -285,6 +285,7 @@ export interface PipelineRunMetrics {
   readonly aggregateCostInUSD: number;
   readonly nodeCount: number;
   readonly failedNodeCount: number;
+  readonly skippedNodeCount: number;
 }
 
 /**

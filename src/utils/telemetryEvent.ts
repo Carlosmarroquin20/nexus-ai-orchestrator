@@ -22,7 +22,7 @@ import {
 
 import { isFiniteNumber, isRecord, isString } from './guards';
 
-const EXECUTION_STATES = new Set<string>(['idle', 'running', 'completed', 'failed']);
+const EXECUTION_STATES = new Set<string>(['idle', 'running', 'completed', 'failed', 'skipped']);
 
 const isExecutionState = (value: unknown): value is NodeExecutionState =>
   typeof value === 'string' && EXECUTION_STATES.has(value);
