@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo } from 'react';
 
+import { createDemoPipeline } from '@/config/demoPipeline';
 import { useGraphStore } from '@/store/useGraphStore';
 import {
   GRAPH_STORAGE_KEY,
@@ -83,6 +84,8 @@ export interface GraphTransferApi {
   readonly exportToFile: () => void;
   /** Parses a file and, on success, replaces the current graph. Returns the result. */
   readonly importFromFile: (file: File) => Promise<GraphParseResult>;
+  /** Replaces the current graph with the bundled example pipeline. */
+  readonly loadDemo: () => void;
   readonly clearGraph: () => void;
 }
 
@@ -106,6 +109,10 @@ export const useGraphTransfer = (): GraphTransferApi =>
           useGraphStore.getState().loadGraph(result.snapshot.nodes, result.snapshot.edges);
         }
         return result;
+      },
+      loadDemo: () => {
+        const { nodes, edges } = createDemoPipeline();
+        useGraphStore.getState().loadGraph(nodes, edges);
       },
       clearGraph: () => useGraphStore.getState().clearGraph(),
     }),

@@ -14,6 +14,7 @@ import { getNodeDescriptor } from '@/config/nodeRegistry';
 import { useGraphActions, useNexusEdges, useNexusNodes } from '@/store/useGraphStore';
 import { type NexusEdge, type NexusNode, asNodeId } from '@/types/graph';
 
+import { CanvasEmptyState } from './CanvasEmptyState';
 import { CanvasToolbar } from './CanvasToolbar';
 import { ShortcutsLegend } from './ShortcutsLegend';
 import { nexusEdgeTypes, nexusNodeTypes } from './nodeTypes';
@@ -38,34 +39,37 @@ export const GraphCanvas = (): JSX.Element => {
   );
 
   return (
-    <ReactFlow<NexusNode, NexusEdge>
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nexusNodeTypes}
-      edgeTypes={nexusEdgeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
-      onSelectionChange={onSelectionChange}
-      fitView
-      fitViewOptions={{ padding: 0.2, maxZoom: 1.5 }}
-      minZoom={0.2}
-      maxZoom={2}
-      // Deletion is owned by useCanvasShortcuts (single path through the store).
-      deleteKeyCode={null}
-      proOptions={{ hideAttribution: false }}
-    >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-      <MiniMap<NexusNode>
-        pannable
-        zoomable
-        className="!bg-card"
-        maskColor="hsl(var(--background) / 0.7)"
-        nodeColor={(node) => `hsl(var(${getNodeDescriptor(node.data.kind).accentVar}))`}
-      />
-      <Controls className="!shadow-lg [&>button]:!border-border [&>button]:!bg-card [&>button]:!fill-foreground" />
-      <CanvasToolbar />
-      <ShortcutsLegend />
-    </ReactFlow>
+    <div className="relative h-full w-full">
+      <ReactFlow<NexusNode, NexusEdge>
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nexusNodeTypes}
+        edgeTypes={nexusEdgeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onSelectionChange={onSelectionChange}
+        fitView
+        fitViewOptions={{ padding: 0.2, maxZoom: 1.5 }}
+        minZoom={0.2}
+        maxZoom={2}
+        // Deletion is owned by useCanvasShortcuts (single path through the store).
+        deleteKeyCode={null}
+        proOptions={{ hideAttribution: false }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+        <MiniMap<NexusNode>
+          pannable
+          zoomable
+          className="!bg-card"
+          maskColor="hsl(var(--background) / 0.7)"
+          nodeColor={(node) => `hsl(var(${getNodeDescriptor(node.data.kind).accentVar}))`}
+        />
+        <Controls className="!shadow-lg [&>button]:!border-border [&>button]:!bg-card [&>button]:!fill-foreground" />
+        <CanvasToolbar />
+        <ShortcutsLegend />
+      </ReactFlow>
+      {nodes.length === 0 ? <CanvasEmptyState /> : null}
+    </div>
   );
 };

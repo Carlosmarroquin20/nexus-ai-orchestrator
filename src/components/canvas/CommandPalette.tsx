@@ -4,6 +4,7 @@ import { useReactFlow } from '@xyflow/react';
 import {
   CornerDownLeft,
   Download,
+  LayoutTemplate,
   type LucideIcon,
   Maximize,
   Play,
@@ -49,7 +50,7 @@ export const CommandPalette = (): JSX.Element => {
   const activeRun = useActiveRun();
   const { selectNode } = useGraphActions();
   const { addNodeAtViewportCenter } = useGraphManipulation();
-  const { exportToFile } = useGraphTransfer();
+  const { exportToFile, loadDemo } = useGraphTransfer();
   const reactFlow = useReactFlow<NexusNode, NexusEdge>();
 
   const isRunning = activeRun?.status === 'running';
@@ -132,6 +133,17 @@ export const CommandPalette = (): JSX.Element => {
     const actionItems: PaletteItem[] = [
       runItem,
       {
+        id: 'graph:demo',
+        label: 'Load demo pipeline',
+        hint: 'Action',
+        icon: LayoutTemplate,
+        keywords: 'demo sample example load pipeline template',
+        perform: () => {
+          loadDemo();
+          setOpen(false);
+        },
+      },
+      {
         id: 'view:fit',
         label: 'Fit view',
         hint: 'Action',
@@ -156,7 +168,7 @@ export const CommandPalette = (): JSX.Element => {
     ];
 
     return [...nodeItems, ...addItems, ...actionItems];
-  }, [open, nodes, isRunning, selectNode, addNodeAtViewportCenter, exportToFile, reactFlow]);
+  }, [open, nodes, isRunning, selectNode, addNodeAtViewportCenter, exportToFile, loadDemo, reactFlow]);
 
   const filtered = useMemo<PaletteItem[]>(() => {
     const normalized = query.trim().toLowerCase();
