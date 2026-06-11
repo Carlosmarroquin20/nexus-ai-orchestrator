@@ -2,6 +2,7 @@
 
 import { ReactFlowProvider } from '@xyflow/react';
 
+import { CommandPalette } from '@/components/canvas/CommandPalette';
 import { GraphCanvas } from '@/components/canvas/GraphCanvas';
 import { InspectorPanel } from '@/components/inspector/InspectorPanel';
 import { WorkspaceActions } from '@/components/shared/WorkspaceActions';
@@ -42,6 +43,7 @@ export default function WorkspacePage(): JSX.Element {
           <InspectorPanel />
         </main>
       </div>
+      <CommandPalette />
     </ReactFlowProvider>
   );
 }
