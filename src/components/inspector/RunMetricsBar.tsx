@@ -1,18 +1,9 @@
 'use client';
 
 import { MetricStat } from '@/components/shared/MetricStat';
-import type { PipelineRunStatus } from '@/types/graph';
+import { RunStatusBadge } from '@/components/shared/RunStatusBadge';
 import { useActiveRun, useActiveRunMetrics } from '@/store/useGraphStore';
-import { cn } from '@/utils/cn';
 import { formatCostUSD, formatExactTokens, formatLatency } from '@/utils/format';
-
-const STATUS_PRESENTATION: Readonly<Record<PipelineRunStatus, { label: string; className: string }>> = {
-  queued: { label: 'Queued', className: 'bg-state-idle/15 text-state-idle' },
-  running: { label: 'Running', className: 'bg-state-running/15 text-state-running' },
-  completed: { label: 'Completed', className: 'bg-state-completed/15 text-state-completed' },
-  failed: { label: 'Failed', className: 'bg-state-failed/15 text-state-failed' },
-  cancelled: { label: 'Cancelled', className: 'bg-state-idle/15 text-state-idle' },
-};
 
 /**
  * Aggregate run telemetry header. Subscribes narrowly to the active run and its
@@ -30,17 +21,13 @@ export const RunMetricsBar = (): JSX.Element => {
     );
   }
 
-  const status = STATUS_PRESENTATION[activeRun.status];
-
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border bg-card p-3">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Pipeline Run
         </span>
-        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', status.className)}>
-          {status.label}
-        </span>
+        <RunStatusBadge status={activeRun.status} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <MetricStat label="Total latency" value={formatLatency(metrics.totalLatencyMs)} />

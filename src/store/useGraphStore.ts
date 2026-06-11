@@ -84,6 +84,7 @@ const selectGraphActions = (state: GraphStore) => ({
   cancelRun: state.cancelRun,
   setStreamStatus: state.setStreamStatus,
   setFailRate: state.setFailRate,
+  clearRunHistory: state.clearRunHistory,
 });
 
 /* -------------------------------------------------------------------------- */
@@ -97,6 +98,21 @@ export const useNexusEdges = (): NexusEdge[] => useGraphStore((state) => state.e
 export const useSelectedNode = (): NexusNode | null => useGraphStore(selectSelectedNode);
 
 export const useActiveRun = (): PipelineRun | null => useGraphStore(selectActiveRun);
+
+/**
+ * Recorded runs, newest first. Uses `useShallow` so the list re-renders only
+ * when a run's identity changes (e.g. the active run during a tick) or the set
+ * of runs changes — not on unrelated store updates.
+ */
+export const useRunHistory = (): PipelineRun[] =>
+  useGraphStore(
+    useShallow((state) =>
+      state.runOrder
+        .map((id) => state.runsById[id])
+        .filter((run): run is PipelineRun => run !== undefined)
+        .reverse(),
+    ),
+  );
 
 export const useActiveRunMetrics = (): PipelineRunMetrics | null =>
   useGraphStore((state) => selectActiveRun(state)?.metrics ?? null);

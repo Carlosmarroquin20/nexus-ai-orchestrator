@@ -12,6 +12,7 @@ import { formatCostUSD, formatExactTokens, formatLatency, formatTimestamp } from
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { NodeConfigForm } from './NodeConfigForm';
 import { PayloadViewer } from './PayloadViewer';
+import { RunHistoryPanel } from './RunHistoryPanel';
 import { RunMetricsBar } from './RunMetricsBar';
 
 const NodeDetail = ({ node }: { readonly node: NexusNode }): JSX.Element => {
@@ -76,6 +77,7 @@ export const InspectorPanel = (): JSX.Element => {
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-4 p-4">
           <RunMetricsBar />
+          <RunHistoryPanel />
           <DiagnosticsPanel />
           {selectedNode !== null ? (
             <NodeDetail node={selectedNode} />

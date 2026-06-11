@@ -54,6 +54,8 @@ export interface DataFlowSlice {
   readonly ingestTelemetryEvent: (event: TelemetryEvent) => void;
   readonly finalizeRun: (status: TerminalRunStatus) => void;
   readonly cancelRun: () => void;
+  /** Clears recorded runs, retaining only the active run (if any). */
+  readonly clearRunHistory: () => void;
   readonly setStreamStatus: (status: StreamStatus) => void;
   /** Sets the fault-injection probability (clamped to [0,1]). */
   readonly setFailRate: (rate: number) => void;
@@ -67,6 +69,9 @@ type DataFlowSliceCreator = StateCreator<
 >;
 
 /* ----------------------------- module helpers ---------------------------- */
+
+/** Cap on retained runs; older runs are evicted on the next `beginRun`. */
+const MAX_RUN_HISTORY = 25;
 
 const collectTelemetry = (nodes: readonly NexusNode[]): NodeTelemetry[] =>
   nodes.map((node) => node.data.telemetry);
@@ -103,11 +108,15 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
       metrics: aggregateRunMetrics(collectTelemetry(nodes)),
     };
     set(
-      (store) => ({
-        activeRunId: runId,
-        runsById: { ...store.runsById, [runId]: run },
-        runOrder: [...store.runOrder, runId],
-      }),
+      (store) => {
+        const runOrder = [...store.runOrder, runId].slice(-MAX_RUN_HISTORY);
+        const merged: Record<RunId, PipelineRun> = { ...store.runsById, [runId]: run };
+        // Rebuild from the capped order so evicted runs are pruned from the map.
+        const runsById = Object.fromEntries(
+          runOrder.map((id) => [id, merged[id]!]),
+        ) as Record<RunId, PipelineRun>;
+        return { activeRunId: runId, runsById, runOrder };
+      },
       false,
       'dataFlow/beginRun',
     );
@@ -168,6 +177,18 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
   },
 
   cancelRun: () => get().finalizeRun('cancelled'),
+
+  clearRunHistory: () =>
+    set(
+      (store) => {
+        if (store.activeRunId === null) return { runsById: {}, runOrder: [] };
+        const active = store.runsById[store.activeRunId];
+        if (active === undefined) return { runsById: {}, runOrder: [] };
+        return { runsById: { [store.activeRunId]: active }, runOrder: [store.activeRunId] };
+      },
+      false,
+      'dataFlow/clearRunHistory',
+    ),
 
   setStreamStatus: (status) => set({ streamStatus: status }, false, 'dataFlow/setStreamStatus'),
 
