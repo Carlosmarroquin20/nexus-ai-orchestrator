@@ -276,8 +276,9 @@ export interface EdgeDependency {
 
 export type PipelineRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
-/** Aggregate roll-up of per-node telemetry for a single run. */
-export interface PipelineRunMetrics {
+/** Sum-based roll-up of per-node telemetry (no graph structure required). */
+export interface RunTelemetryTotals {
+  /** Sum of node latencies (cumulative compute time), NOT wall-clock. */
   readonly totalLatencyMs: number;
   readonly aggregateInputTokens: number;
   readonly aggregateOutputTokens: number;
@@ -286,6 +287,16 @@ export interface PipelineRunMetrics {
   readonly nodeCount: number;
   readonly failedNodeCount: number;
   readonly skippedNodeCount: number;
+}
+
+/** Full run metrics: telemetry totals plus structural (critical-path) analysis. */
+export interface PipelineRunMetrics extends RunTelemetryTotals {
+  /**
+   * Wall-clock latency of the longest dependency path — the minimum achievable
+   * latency when independent branches run in parallel. Distinct from
+   * `totalLatencyMs`, which sums every node's latency.
+   */
+  readonly criticalPathLatencyMs: number;
 }
 
 /**

@@ -22,7 +22,7 @@ import {
   type RunId,
   type TelemetryEvent,
 } from '@/types/graph';
-import { aggregateRunMetrics } from '@/utils/telemetry';
+import { computeRunMetrics } from '@/utils/runAnalysis';
 
 import type { GraphStore } from '../useGraphStore';
 
@@ -73,9 +73,6 @@ type DataFlowSliceCreator = StateCreator<
 /** Cap on retained runs; older runs are evicted on the next `beginRun`. */
 const MAX_RUN_HISTORY = 25;
 
-const collectTelemetry = (nodes: readonly NexusNode[]): NodeTelemetry[] =>
-  nodes.map((node) => node.data.telemetry);
-
 const snapshotTelemetry = (
   nodes: readonly NexusNode[],
 ): Readonly<Record<NodeId, NodeTelemetry>> => {
@@ -105,7 +102,7 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
       startedAt: Date.now(),
       finishedAt: null,
       telemetryByNode: snapshotTelemetry(nodes),
-      metrics: aggregateRunMetrics(collectTelemetry(nodes)),
+      metrics: computeRunMetrics(nodes, get().edges),
     };
     set(
       (store) => {
@@ -132,7 +129,7 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
     get().updateNodeTelemetry(event.nodeId, event.state, event.patch);
 
     const nodes = get().nodes;
-    const metrics = aggregateRunMetrics(collectTelemetry(nodes));
+    const metrics = computeRunMetrics(nodes, get().edges);
     const telemetryByNode = snapshotTelemetry(nodes);
     set(
       (store) => {
@@ -151,7 +148,7 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
     const activeRunId = get().activeRunId;
     if (activeRunId === null) return;
     const nodes = get().nodes;
-    const metrics = aggregateRunMetrics(collectTelemetry(nodes));
+    const metrics = computeRunMetrics(nodes, get().edges);
     const telemetryByNode = snapshotTelemetry(nodes);
     set(
       (store) => {

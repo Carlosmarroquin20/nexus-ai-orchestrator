@@ -18,7 +18,7 @@ import type {
   NodeExecutionState,
   NodeTelemetry,
   NodeTelemetryPatch,
-  PipelineRunMetrics,
+  RunTelemetryTotals,
   TelemetryError,
 } from '@/types/graph';
 
@@ -110,7 +110,7 @@ export const reconcileTelemetry = (
   };
 };
 
-const EMPTY_METRICS: PipelineRunMetrics = {
+const EMPTY_METRICS: RunTelemetryTotals = {
   totalLatencyMs: 0,
   aggregateInputTokens: 0,
   aggregateOutputTokens: 0,
@@ -122,16 +122,16 @@ const EMPTY_METRICS: PipelineRunMetrics = {
 };
 
 /**
- * Rolls a collection of per-node telemetries into run-level metrics.
+ * Rolls a collection of per-node telemetries into the sum-based totals.
  *
  * `totalLatencyMs` is the arithmetic sum of node latencies (cumulative compute
- * time), NOT the wall-clock critical path. Critical-path latency requires a
- * topological traversal and is computed separately by the run analyzer.
+ * time), NOT the wall-clock critical path. Critical-path latency requires graph
+ * structure and is layered on in `@/utils/runAnalysis` (`computeRunMetrics`).
  */
 export const aggregateRunMetrics = (
   telemetries: readonly NodeTelemetry[],
-): PipelineRunMetrics =>
-  telemetries.reduce<PipelineRunMetrics>(
+): RunTelemetryTotals =>
+  telemetries.reduce<RunTelemetryTotals>(
     (acc, t) => ({
       totalLatencyMs: acc.totalLatencyMs + (t.latencyMs ?? 0),
       aggregateInputTokens: acc.aggregateInputTokens + t.inputTokens,

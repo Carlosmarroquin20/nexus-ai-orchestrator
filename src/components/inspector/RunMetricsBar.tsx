@@ -30,7 +30,8 @@ export const RunMetricsBar = (): JSX.Element => {
         <RunStatusBadge status={activeRun.status} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <MetricStat label="Total latency" value={formatLatency(metrics.totalLatencyMs)} />
+        <MetricStat label="Critical path" value={formatLatency(metrics.criticalPathLatencyMs)} />
+        <MetricStat label="Compute time" value={formatLatency(metrics.totalLatencyMs)} />
         <MetricStat label="Total cost" value={formatCostUSD(metrics.aggregateCostInUSD)} />
         <MetricStat label="Total tokens" value={formatExactTokens(metrics.aggregateTotalTokens)} />
         <MetricStat
