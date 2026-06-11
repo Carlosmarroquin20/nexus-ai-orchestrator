@@ -1,19 +1,23 @@
 /**
  * Server-sent execution stream: `GET /api/runs/stream?runId=<id>&graph=<json>`.
  *
- * This is a deterministic execution SIMULATOR, not a real model-calling engine —
- * it provides the transport and event structure a production engine would slot
- * into. It sequences the supplied graph in topological order and emits, per node,
- * a `running` frame followed by a `completed` frame carrying simulated telemetry,
- * then a terminal `done` event.
+ * Executes the supplied graph in topological order, streaming a `running` frame
+ * then a `completed` (or `failed`) frame per node, and a terminal `done` event.
+ * Output text flows downstream: each node's input is the concatenation of its
+ * predecessors' outputs (a fixed seed for sources).
  *
- * Frames are `TelemetryEvent` JSON on the default `message` channel (consumed by
- * the client's `onmessage`); the terminal signal uses a named `done` event so the
- * client can close the source without triggering EventSource auto-reconnect.
+ * Execution mode is chosen at request time:
+ * - Real: when `GEMINI_API_KEY` is set, LLM-backed nodes (AGENT/LLM_CORE/
+ *   CLASSIFIER) call Google AI Studio (Gemini) and report real latency, token
+ *   usage, and output. The key is read server-side only and never leaves the server.
+ * - Simulated fallback: with no key, deterministic per-kind telemetry is emitted,
+ *   so the app remains fully functional without credentials.
  *
- * Stateless by design: the topology is passed in the query string. For very large
- * graphs that exceed URL limits, the production evolution is a POST-to-start +
- * GET-by-id handshake; the event contract here is unaffected by that change.
+ * `failRate` (query, [0,1]) injects faults in either mode to exercise the skip
+ * propagation: a failed node's transitive descendants are reported `skipped`.
+ *
+ * Frames are `TelemetryEvent` JSON on the default `message` channel; the terminal
+ * signal uses a named `done` event so the client can close without auto-reconnect.
  */
 
 import {
@@ -24,7 +28,8 @@ import {
   asNodeId,
   asRunId,
 } from '@/types/graph';
-import type { ExecutionDescriptor, RunOutcome } from '@/types/execution';
+import type { ExecutionDescriptor, ExecutionNodeParams, RunOutcome } from '@/types/execution';
+import { GeminiError, generateWithGemini } from '@/server/geminiClient';
 import { isFiniteNumber, isRecord, isString } from '@/utils/guards';
 import { topologicalOrder } from '@/utils/graphValidation';
 import { safeJsonParse } from '@/utils/telemetryEvent';
@@ -36,11 +41,16 @@ const SSE_HEADERS: Readonly<Record<string, string>> = {
   'Content-Type': 'text/event-stream; charset=utf-8',
   'Cache-Control': 'no-cache, no-transform',
   Connection: 'keep-alive',
-  // Disable proxy buffering so frames flush immediately.
   'X-Accel-Buffering': 'no',
 };
 
-/** Wall-clock pacing per phase (kept short; independent of the reported latency). */
+const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+// USD per 1M tokens. Estimate; reconcile with the model's published rate card.
+const GEMINI_PRICING = { inputPerMillionUSD: 0.1, outputPerMillionUSD: 0.4 };
+// Seed input handed to source nodes (no predecessors).
+const SEED_INPUT = 'How do I reset my account password?';
+
+/** Wall-clock pacing for the simulated fallback (real mode is paced by the API). */
 const RUNNING_PHASE_MS = 420;
 const INTER_NODE_GAP_MS = 110;
 
@@ -49,15 +59,19 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 const randomInt = (min: number, max: number): number =>
   Math.floor(min + Math.random() * (max - min + 1));
 
-interface SimulatedMetrics {
+const truncate = (text: string, max: number): string =>
+  text.length <= max ? text : `${text.slice(0, max)}…`;
+
+interface NodeExecutionResult {
+  readonly outputText: string;
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly latencyMs: number;
   readonly costInUSD: number;
 }
 
-/** Per-kind telemetry profile. Rough, illustrative figures for the simulation. */
-const simulateMetrics = (kind: NexusNodeKind): SimulatedMetrics => {
+/** Per-kind simulated telemetry profile (used only without an API key). */
+const simulateMetrics = (kind: NexusNodeKind): Omit<NodeExecutionResult, 'outputText'> => {
   switch (kind) {
     case 'LLM_CORE':
     case 'AGENT': {
@@ -97,6 +111,17 @@ const NODE_KINDS = new Set<string>([
   'LLM_CORE',
 ]);
 
+const parseParams = (raw: unknown): ExecutionNodeParams => {
+  if (!isRecord(raw)) return {};
+  return {
+    ...(isString(raw['systemPrompt']) ? { systemPrompt: raw['systemPrompt'] } : {}),
+    ...(isString(raw['template']) ? { template: raw['template'] } : {}),
+    ...(Array.isArray(raw['labels']) ? { labels: raw['labels'].filter(isString) } : {}),
+    ...(isFiniteNumber(raw['temperature']) ? { temperature: raw['temperature'] } : {}),
+    ...(isFiniteNumber(raw['maxOutputTokens']) ? { maxOutputTokens: raw['maxOutputTokens'] } : {}),
+  };
+};
+
 /** Defensively narrows the query payload into an execution descriptor. */
 const parseDescriptor = (raw: unknown): ExecutionDescriptor | null => {
   if (!isRecord(raw) || !Array.isArray(raw['nodes']) || !Array.isArray(raw['edges'])) return null;
@@ -107,7 +132,11 @@ const parseDescriptor = (raw: unknown): ExecutionDescriptor | null => {
       return null;
     }
     if (!NODE_KINDS.has(candidate['kind'])) return null;
-    nodes.push({ id: candidate['id'], kind: candidate['kind'] as NexusNodeKind });
+    nodes.push({
+      id: candidate['id'],
+      kind: candidate['kind'] as NexusNodeKind,
+      params: parseParams(candidate['params']),
+    });
   }
 
   const edges: ExecutionDescriptor['edges'] = [];
@@ -134,6 +163,35 @@ const buildEvent = (
   patch,
 });
 
+const geminiCost = (inputTokens: number, outputTokens: number): number =>
+  (inputTokens / 1_000_000) * GEMINI_PRICING.inputPerMillionUSD +
+  (outputTokens / 1_000_000) * GEMINI_PRICING.outputPerMillionUSD;
+
+/** Builds the prompt (and optional system instruction) for an LLM-backed node. */
+const buildPrompt = (
+  kind: NexusNodeKind,
+  params: ExecutionNodeParams,
+  inputText: string,
+): { systemInstruction?: string; prompt: string } => {
+  if (kind === 'AGENT') {
+    return {
+      ...(params.systemPrompt !== undefined && params.systemPrompt.length > 0
+        ? { systemInstruction: params.systemPrompt }
+        : {}),
+      prompt: inputText,
+    };
+  }
+  if (kind === 'CLASSIFIER') {
+    const labels = params.labels !== undefined && params.labels.length > 0
+      ? params.labels.join(', ')
+      : 'general';
+    return {
+      prompt: `Classify the request into exactly one of: [${labels}]. Reply with only the label.\n\nRequest: ${inputText}`,
+    };
+  }
+  return { prompt: inputText };
+};
+
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const runId = url.searchParams.get('runId');
@@ -154,17 +212,21 @@ export async function GET(request: Request): Promise<Response> {
   const failRateParam = Number(url.searchParams.get('failRate'));
   const failRate = isFiniteNumber(failRateParam) ? Math.min(Math.max(failRateParam, 0), 1) : 0;
 
-  // Topological order drives execution; cyclic graphs fall back to input order
-  // (diagnostics already surface the cycle to the user).
+  // Server-only credentials. Absent key -> simulated fallback. Never client-exposed.
+  const apiKey = process.env['GEMINI_API_KEY'];
+  const model = process.env['GEMINI_MODEL'] ?? DEFAULT_GEMINI_MODEL;
+  const realMode = typeof apiKey === 'string' && apiKey.length > 0;
+
   const order =
     topologicalOrder(descriptor.nodes, descriptor.edges) ?? descriptor.nodes.map((node) => node.id);
   const kindById = new Map(descriptor.nodes.map((node) => [node.id, node.kind]));
+  const paramsById = new Map(descriptor.nodes.map((node) => [node.id, node.params ?? {}]));
 
   const outgoing = new Map<string, string[]>();
+  const incoming = new Map<string, string[]>();
   for (const edge of descriptor.edges) {
-    const bucket = outgoing.get(edge.source);
-    if (bucket === undefined) outgoing.set(edge.source, [edge.target]);
-    else bucket.push(edge.target);
+    (outgoing.get(edge.source) ?? outgoing.set(edge.source, []).get(edge.source)!).push(edge.target);
+    (incoming.get(edge.target) ?? incoming.set(edge.target, []).get(edge.target)!).push(edge.source);
   }
 
   /** Transitive descendants of a node (the subgraph that cannot run if it fails). */
@@ -180,6 +242,62 @@ export async function GET(request: Request): Promise<Response> {
       }
     }
     return result;
+  };
+
+  const outputById = new Map<string, string>();
+  const gatherInput = (nodeId: string): string => {
+    const predecessors = incoming.get(nodeId) ?? [];
+    const parts = predecessors
+      .map((predecessor) => outputById.get(predecessor) ?? '')
+      .filter((text) => text.length > 0);
+    return parts.length > 0 ? parts.join('\n\n') : SEED_INPUT;
+  };
+
+  const execute = async (
+    kind: NexusNodeKind,
+    params: ExecutionNodeParams,
+    inputText: string,
+  ): Promise<NodeExecutionResult> => {
+    if (kind === 'PROMPT_TEMPLATE') {
+      const rendered =
+        params.template !== undefined && params.template.length > 0
+          ? params.template.replace(/\{\{\s*[\w$.]+\s*\}\}/g, inputText)
+          : inputText;
+      return { outputText: rendered, inputTokens: 0, outputTokens: 0, latencyMs: 0, costInUSD: 0 };
+    }
+    if (kind === 'VECTOR_DB') {
+      return {
+        outputText: `Retrieved context for: ${truncate(inputText, 160)}`,
+        inputTokens: 0,
+        outputTokens: 0,
+        latencyMs: 0,
+        costInUSD: 0,
+      };
+    }
+
+    // LLM-backed kinds: AGENT, LLM_CORE, CLASSIFIER.
+    if (apiKey) {
+      const { systemInstruction, prompt } = buildPrompt(kind, params, inputText);
+      const result = await generateWithGemini({
+        apiKey,
+        model,
+        prompt,
+        ...(systemInstruction !== undefined ? { systemInstruction } : {}),
+        ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+        ...(params.maxOutputTokens !== undefined ? { maxOutputTokens: params.maxOutputTokens } : {}),
+        signal: request.signal,
+      });
+      return {
+        outputText: result.text,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        latencyMs: result.latencyMs,
+        costInUSD: geminiCost(result.inputTokens, result.outputTokens),
+      };
+    }
+
+    const metrics = simulateMetrics(kind);
+    return { outputText: `Simulated ${kind} output.`, ...metrics };
   };
 
   const encoder = new TextEncoder();
@@ -213,41 +331,62 @@ export async function GET(request: Request): Promise<Response> {
       for (const nodeId of order) {
         if (aborted) break;
 
-        // Downstream of an upstream failure: report as skipped without executing.
         if (skipped.has(nodeId)) {
           sendEvent(buildEvent(runId, nodeId, 'skipped', {}));
           continue;
         }
 
         const kind = kindById.get(nodeId) ?? 'PROMPT_TEMPLATE';
+        const params = paramsById.get(nodeId) ?? {};
+        const inputText = gatherInput(nodeId);
 
-        sendEvent(buildEvent(runId, nodeId, 'running', { inputPayload: { phase: 'invoke' } }));
-        await sleep(RUNNING_PHASE_MS);
-        if (aborted) break;
+        sendEvent(buildEvent(runId, nodeId, 'running', { inputPayload: { input: truncate(inputText, 280) } }));
+        if (!realMode) {
+          await sleep(RUNNING_PHASE_MS);
+          if (aborted) break;
+        }
 
-        if (Math.random() < failRate) {
+        if (failRate > 0 && Math.random() < failRate) {
           sendEvent(
             buildEvent(runId, nodeId, 'failed', {
-              error: { code: 'SIMULATED_FAILURE', message: 'Simulated node failure.', originNodeId: null },
+              error: { code: 'INJECTED_FAILURE', message: 'Injected fault (failRate).', originNodeId: null },
             }),
           );
           outcome = 'failed';
-          // Mark the transitive descendants as skipped; independent branches run on.
           for (const descendant of descendantsOf(nodeId)) skipped.add(descendant);
           continue;
         }
 
-        const metrics = simulateMetrics(kind);
-        sendEvent(
-          buildEvent(runId, nodeId, 'completed', {
-            latencyMs: metrics.latencyMs,
-            inputTokens: metrics.inputTokens,
-            outputTokens: metrics.outputTokens,
-            costInUSD: metrics.costInUSD,
-            outputPayload: { kind, summary: `Simulated output for ${kind}.` },
-          }),
-        );
-        await sleep(INTER_NODE_GAP_MS);
+        try {
+          const result = await execute(kind, params, inputText);
+          if (aborted) break;
+          outputById.set(nodeId, result.outputText);
+          sendEvent(
+            buildEvent(runId, nodeId, 'completed', {
+              latencyMs: result.latencyMs,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+              costInUSD: result.costInUSD,
+              outputPayload: { output: truncate(result.outputText, 600) },
+            }),
+          );
+        } catch (error) {
+          if (aborted) break;
+          const code = error instanceof GeminiError ? `GEMINI_${error.status}` : 'EXECUTION_ERROR';
+          sendEvent(
+            buildEvent(runId, nodeId, 'failed', {
+              error: {
+                code,
+                message: error instanceof Error ? error.message : 'Node execution failed.',
+                originNodeId: null,
+              },
+            }),
+          );
+          outcome = 'failed';
+          for (const descendant of descendantsOf(nodeId)) skipped.add(descendant);
+        }
+
+        if (!realMode && !aborted) await sleep(INTER_NODE_GAP_MS);
       }
 
       if (!aborted) sendDone(outcome);

@@ -7,9 +7,23 @@
 
 import type { NexusNodeKind } from './graph';
 
+/**
+ * Per-node parameters the execution engine needs to build a real prompt. Only the
+ * fields relevant to a node's kind are populated. Kept minimal to bound the query
+ * string size (the descriptor travels as a URL param).
+ */
+export interface ExecutionNodeParams {
+  readonly systemPrompt?: string;
+  readonly template?: string;
+  readonly labels?: readonly string[];
+  readonly temperature?: number;
+  readonly maxOutputTokens?: number;
+}
+
 export interface ExecutionNodeRef {
   readonly id: string;
   readonly kind: NexusNodeKind;
+  readonly params?: ExecutionNodeParams;
 }
 
 export interface ExecutionEdgeRef {

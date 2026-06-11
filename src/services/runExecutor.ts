@@ -14,8 +14,8 @@
  */
 
 import { useGraphStore } from '@/store/useGraphStore';
-import type { ExecutionDescriptor, RunOutcome } from '@/types/execution';
-import type { NexusEdge, NexusNode } from '@/types/graph';
+import type { ExecutionDescriptor, ExecutionNodeParams, RunOutcome } from '@/types/execution';
+import { NODE_KIND, type NexusEdge, type NexusNode } from '@/types/graph';
 import { isRecord } from '@/utils/guards';
 import { parseTelemetryEvent, safeJsonParse } from '@/utils/telemetryEvent';
 
@@ -23,11 +23,30 @@ const STREAM_ENDPOINT = '/api/runs/stream';
 
 let activeSource: EventSource | null = null;
 
+/** Extracts the execution-relevant parameters from a node's variant config. */
+const extractParams = (node: NexusNode): ExecutionNodeParams => {
+  switch (node.data.kind) {
+    case NODE_KIND.AGENT:
+      return { systemPrompt: node.data.config.systemPrompt };
+    case NODE_KIND.CLASSIFIER:
+      return { labels: node.data.config.labels };
+    case NODE_KIND.LLM_CORE:
+      return {
+        temperature: node.data.config.temperature,
+        maxOutputTokens: node.data.config.maxOutputTokens,
+      };
+    case NODE_KIND.PROMPT_TEMPLATE:
+      return { template: node.data.config.template };
+    default:
+      return {};
+  }
+};
+
 const buildDescriptor = (
   nodes: readonly NexusNode[],
   edges: readonly NexusEdge[],
 ): ExecutionDescriptor => ({
-  nodes: nodes.map((node) => ({ id: node.id, kind: node.data.kind })),
+  nodes: nodes.map((node) => ({ id: node.id, kind: node.data.kind, params: extractParams(node) })),
   edges: edges.map((edge) => ({ source: edge.source, target: edge.target })),
 });
 
