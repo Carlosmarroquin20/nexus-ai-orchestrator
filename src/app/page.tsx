@@ -10,6 +10,7 @@ import { WorkspaceHeader } from '@/components/shared/WorkspaceHeader';
 import { useCanvasShortcuts } from '@/hooks/useCanvasShortcuts';
 import { useGraphAutoPersist } from '@/hooks/useGraphPersistence';
 import { useGraphHistory } from '@/hooks/useGraphHistory';
+import { useSettingsPersistence } from '@/hooks/useSettingsPersistence';
 
 /**
  * Primary IDE workspace.
@@ -25,6 +26,7 @@ export default function WorkspacePage(): JSX.Element {
   // Persist the graph to localStorage and rehydrate it on load. Ordering matters:
   // history is initialized after hydration so the loaded graph is the baseline.
   useGraphAutoPersist();
+  useSettingsPersistence();
   useGraphHistory();
   useCanvasShortcuts();
 

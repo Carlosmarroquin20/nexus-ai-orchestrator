@@ -10,26 +10,13 @@ import {
   parseGraph,
   serializeGraph,
 } from '@/utils/graphSerialization';
+import { readLocalStorage, writeLocalStorage } from '@/utils/localStorage';
 import { safeJsonParse } from '@/utils/telemetryEvent';
 
 const SAVE_DEBOUNCE_MS = 500;
 
-const readStorage = (): string | null => {
-  try {
-    return window.localStorage.getItem(GRAPH_STORAGE_KEY);
-  } catch {
-    // Private mode / disabled storage: degrade to non-persistent session.
-    return null;
-  }
-};
-
-const writeStorage = (value: string): void => {
-  try {
-    window.localStorage.setItem(GRAPH_STORAGE_KEY, value);
-  } catch {
-    // Quota exceeded or storage denied: drop the write silently.
-  }
-};
+const readStorage = (): string | null => readLocalStorage(GRAPH_STORAGE_KEY);
+const writeStorage = (value: string): void => writeLocalStorage(GRAPH_STORAGE_KEY, value);
 
 /**
  * Owns the localStorage persistence lifecycle. Call EXACTLY ONCE at the workspace
