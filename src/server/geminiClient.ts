@@ -13,6 +13,18 @@ import { isFiniteNumber, isRecord, isString } from '@/utils/guards';
 
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+/** Hard cap on a single generate call so a hung request cannot stall the stream. */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/** `finishReason` values that mean the generation was suppressed, not completed. */
+const BLOCKED_FINISH_REASONS = new Set<string>([
+  'SAFETY',
+  'RECITATION',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+]);
+
 export interface GeminiRequest {
   readonly apiKey: string;
   readonly model: string;
@@ -40,11 +52,14 @@ export class GeminiError extends Error {
   }
 }
 
-const extractText = (json: unknown): string => {
-  if (!isRecord(json) || !Array.isArray(json['candidates'])) return '';
+const firstCandidate = (json: unknown): Record<string, unknown> | null => {
+  if (!isRecord(json) || !Array.isArray(json['candidates'])) return null;
   const first = json['candidates'][0];
-  if (!isRecord(first)) return '';
-  const content = first['content'];
+  return isRecord(first) ? first : null;
+};
+
+const extractText = (candidate: Record<string, unknown>): string => {
+  const content = candidate['content'];
   if (!isRecord(content) || !Array.isArray(content['parts'])) return '';
   return content['parts']
     .map((part) => (isRecord(part) && isString(part['text']) ? part['text'] : ''))
@@ -61,7 +76,18 @@ const extractUsage = (json: unknown): { inputTokens: number; outputTokens: numbe
   };
 };
 
-/** Calls `generateContent` and returns the response text plus real token usage and latency. */
+const extractBlockReason = (json: unknown): string | null => {
+  if (!isRecord(json) || !isRecord(json['promptFeedback'])) return null;
+  const reason = json['promptFeedback']['blockReason'];
+  return isString(reason) ? reason : null;
+};
+
+/**
+ * Calls `generateContent` and returns the response text plus real token usage and
+ * latency. Throws {@link GeminiError} on HTTP failure, timeout, or a suppressed
+ * generation (prompt block / safety finish reason) so the caller can mark the
+ * node failed with a legible reason.
+ */
 export const generateWithGemini = async (request: GeminiRequest): Promise<GeminiResult> => {
   const url = `${GEMINI_ENDPOINT}/${encodeURIComponent(request.model)}:generateContent`;
 
@@ -77,6 +103,11 @@ export const generateWithGemini = async (request: GeminiRequest): Promise<Gemini
       : {}),
   };
 
+  // Abort on either the caller's cancellation or the timeout, whichever fires first.
+  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const signal =
+    request.signal !== undefined ? AbortSignal.any([request.signal, timeoutSignal]) : timeoutSignal;
+
   const started = Date.now();
   let response: Response;
   try {
@@ -84,9 +115,14 @@ export const generateWithGemini = async (request: GeminiRequest): Promise<Gemini
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': request.apiKey },
       body: JSON.stringify(body),
-      ...(request.signal !== undefined ? { signal: request.signal } : {}),
+      signal,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new GeminiError(`Gemini request timed out after ${REQUEST_TIMEOUT_MS / 1000}s.`, 408);
+    }
+    // Propagate caller-initiated aborts so the route can recognize cancellation.
+    if (error instanceof Error && error.name === 'AbortError') throw error;
     throw new GeminiError('Network error contacting Gemini.', 0);
   }
   const latencyMs = Date.now() - started;
@@ -97,6 +133,20 @@ export const generateWithGemini = async (request: GeminiRequest): Promise<Gemini
   }
 
   const json = (await response.json()) as unknown;
+
+  const candidate = firstCandidate(json);
+  if (candidate === null) {
+    const blockReason = extractBlockReason(json);
+    throw new GeminiError(
+      blockReason !== null ? `Gemini blocked the prompt (${blockReason}).` : 'Gemini returned no candidates.',
+      422,
+    );
+  }
+  const finishReason = isString(candidate['finishReason']) ? candidate['finishReason'] : null;
+  if (finishReason !== null && BLOCKED_FINISH_REASONS.has(finishReason)) {
+    throw new GeminiError(`Gemini suppressed the output (${finishReason}).`, 422);
+  }
+
   const { inputTokens, outputTokens } = extractUsage(json);
-  return { text: extractText(json), inputTokens, outputTokens, latencyMs };
+  return { text: extractText(candidate), inputTokens, outputTokens, latencyMs };
 };

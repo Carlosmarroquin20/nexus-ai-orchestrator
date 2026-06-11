@@ -83,6 +83,14 @@ export const startRun = (): void => {
 
   source.onopen = (): void => useGraphStore.getState().setStreamStatus('open');
 
+  source.addEventListener('mode', (event) => {
+    const payload = safeJsonParse((event as MessageEvent<string>).data);
+    const mode = isRecord(payload) && (payload['mode'] === 'real' || payload['mode'] === 'simulated')
+      ? payload['mode']
+      : 'simulated';
+    useGraphStore.getState().setRunMode(mode);
+  });
+
   source.onmessage = (message: MessageEvent<string>): void => {
     const event = parseTelemetryEvent(safeJsonParse(message.data));
     if (event !== null) useGraphStore.getState().ingestTelemetryEvent(event);

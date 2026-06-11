@@ -22,6 +22,7 @@ import {
   type RunId,
   type TelemetryEvent,
 } from '@/types/graph';
+import type { ExecutionMode } from '@/types/execution';
 import { computeRunMetrics } from '@/utils/runAnalysis';
 
 import type { GraphStore } from '../useGraphStore';
@@ -40,6 +41,8 @@ export interface DataFlowSlice {
   readonly streamStatus: StreamStatus;
   /** Fault-injection probability [0,1] forwarded to the execution stream. */
   readonly failRate: number;
+  /** Execution mode reported by the stream for the current/last run; null until known. */
+  readonly runMode: ExecutionMode | null;
 
   /**
    * Resets all node telemetry, opens a new run in the `running` state, and marks
@@ -59,6 +62,7 @@ export interface DataFlowSlice {
   readonly setStreamStatus: (status: StreamStatus) => void;
   /** Sets the fault-injection probability (clamped to [0,1]). */
   readonly setFailRate: (rate: number) => void;
+  readonly setRunMode: (mode: ExecutionMode | null) => void;
 }
 
 type DataFlowSliceCreator = StateCreator<
@@ -91,6 +95,7 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
   runOrder: [],
   streamStatus: 'disconnected',
   failRate: 0,
+  runMode: null,
 
   beginRun: () => {
     get().resetTelemetry();
@@ -112,7 +117,8 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
         const runsById = Object.fromEntries(
           runOrder.map((id) => [id, merged[id]!]),
         ) as Record<RunId, PipelineRun>;
-        return { activeRunId: runId, runsById, runOrder };
+        // `runMode` resets to null; the stream reports it via the `mode` event.
+        return { activeRunId: runId, runsById, runOrder, runMode: null };
       },
       false,
       'dataFlow/beginRun',
@@ -191,4 +197,6 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
 
   setFailRate: (rate) =>
     set({ failRate: Math.min(Math.max(rate, 0), 1) }, false, 'dataFlow/setFailRate'),
+
+  setRunMode: (mode) => set({ runMode: mode }, false, 'dataFlow/setRunMode'),
 });

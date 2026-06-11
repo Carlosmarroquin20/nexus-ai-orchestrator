@@ -37,6 +37,7 @@ export const CanvasToolbar = (): JSX.Element => {
   const autoLayout = useAutoLayout();
   const activeRun = useActiveRun();
   const streamStatus = useGraphStore((state) => state.streamStatus);
+  const runMode = useGraphStore((state) => state.runMode);
   const failRate = useGraphStore((state) => state.failRate);
   const setFailRate = useGraphStore((state) => state.setFailRate);
 
@@ -109,6 +110,18 @@ export const CanvasToolbar = (): JSX.Element => {
         <div className="mt-2 flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
           <span className={cn('size-1.5 rounded-full', STREAM_STATUS_DOT[streamStatus])} aria-hidden />
           {STREAM_STATUS_LABEL[streamStatus]}
+          {runMode !== null ? (
+            <span
+              className={cn(
+                'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
+                runMode === 'real'
+                  ? 'bg-state-completed/15 text-state-completed'
+                  : 'bg-state-idle/15 text-state-idle',
+              )}
+            >
+              {runMode === 'real' ? 'Gemini' : 'Simulated'}
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-2 flex flex-col gap-1 px-1">

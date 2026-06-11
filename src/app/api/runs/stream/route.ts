@@ -325,6 +325,9 @@ export async function GET(request: Request): Promise<Response> {
         enqueue(`event: done\ndata: ${JSON.stringify({ status })}\n\n`);
       };
 
+      // Announce the execution mode up front so the client can label the run live.
+      enqueue(`event: mode\ndata: ${JSON.stringify({ mode: realMode ? 'real' : 'simulated' })}\n\n`);
+
       let outcome: RunOutcome = 'completed';
       const skipped = new Set<string>();
 

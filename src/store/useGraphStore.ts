@@ -84,6 +84,7 @@ const selectGraphActions = (state: GraphStore) => ({
   cancelRun: state.cancelRun,
   setStreamStatus: state.setStreamStatus,
   setFailRate: state.setFailRate,
+  setRunMode: state.setRunMode,
   clearRunHistory: state.clearRunHistory,
 });
 

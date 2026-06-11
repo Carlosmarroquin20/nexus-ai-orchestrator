@@ -43,3 +43,6 @@ export type RunOutcome = 'completed' | 'failed' | 'cancelled';
 export interface RunDonePayload {
   readonly status: RunOutcome;
 }
+
+/** Whether a run executed against the real backend (Gemini) or the simulator. */
+export type ExecutionMode = 'real' | 'simulated';
