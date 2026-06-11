@@ -10,7 +10,6 @@ import { WorkspaceHeader } from '@/components/shared/WorkspaceHeader';
 import { useCanvasShortcuts } from '@/hooks/useCanvasShortcuts';
 import { useGraphAutoPersist } from '@/hooks/useGraphPersistence';
 import { useGraphHistory } from '@/hooks/useGraphHistory';
-import { useTelemetryStream } from '@/hooks/useTelemetryStream';
 
 /**
  * Primary IDE workspace.
@@ -28,9 +27,6 @@ export default function WorkspacePage(): JSX.Element {
   useGraphAutoPersist();
   useGraphHistory();
   useCanvasShortcuts();
-  useTelemetryStream({
-    url: process.env['NEXT_PUBLIC_TELEMETRY_STREAM_URL'] ?? null,
-  });
 
   return (
     <ReactFlowProvider>

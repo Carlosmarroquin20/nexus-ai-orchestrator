@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { NODE_KIND_ORDER, getNodeDescriptor } from '@/config/nodeRegistry';
 import { useGraphManipulation } from '@/hooks/useGraphManipulation';
 import { useGraphTransfer } from '@/hooks/useGraphPersistence';
+import { startRun, stopRun } from '@/services/runExecutor';
 import { useActiveRun, useGraphActions, useNexusNodes } from '@/store/useGraphStore';
 import { type NexusEdge, type NexusNode, asNodeId } from '@/types/graph';
 import { cn } from '@/utils/cn';
@@ -46,7 +47,7 @@ export const CommandPalette = (): JSX.Element => {
 
   const nodes = useNexusNodes();
   const activeRun = useActiveRun();
-  const { selectNode, beginRun, cancelRun } = useGraphActions();
+  const { selectNode } = useGraphActions();
   const { addNodeAtViewportCenter } = useGraphManipulation();
   const { exportToFile } = useGraphTransfer();
   const reactFlow = useReactFlow<NexusNode, NexusEdge>();
@@ -112,7 +113,7 @@ export const CommandPalette = (): JSX.Element => {
           icon: Square,
           keywords: 'stop cancel run pipeline',
           perform: () => {
-            cancelRun();
+            stopRun();
             setOpen(false);
           },
         }
@@ -123,7 +124,7 @@ export const CommandPalette = (): JSX.Element => {
           icon: Play,
           keywords: 'run execute pipeline start',
           perform: () => {
-            beginRun();
+            startRun();
             setOpen(false);
           },
         };
@@ -155,17 +156,7 @@ export const CommandPalette = (): JSX.Element => {
     ];
 
     return [...nodeItems, ...addItems, ...actionItems];
-  }, [
-    open,
-    nodes,
-    isRunning,
-    selectNode,
-    addNodeAtViewportCenter,
-    beginRun,
-    cancelRun,
-    exportToFile,
-    reactFlow,
-  ]);
+  }, [open, nodes, isRunning, selectNode, addNodeAtViewportCenter, exportToFile, reactFlow]);
 
   const filtered = useMemo<PaletteItem[]>(() => {
     const normalized = query.trim().toLowerCase();

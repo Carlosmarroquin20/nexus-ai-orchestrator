@@ -5,8 +5,9 @@ import { Play, Square } from 'lucide-react';
 
 import type { StreamStatus } from '@/store/slices/dataFlowSlice';
 import { NODE_KIND_ORDER, getNodeDescriptor } from '@/config/nodeRegistry';
-import { useActiveRun, useGraphActions, useGraphStore } from '@/store/useGraphStore';
+import { useActiveRun, useGraphStore } from '@/store/useGraphStore';
 import { useGraphManipulation } from '@/hooks/useGraphManipulation';
+import { startRun, stopRun } from '@/services/runExecutor';
 import { cn } from '@/utils/cn';
 
 import { getNodeIcon } from './icons';
@@ -32,7 +33,6 @@ const STREAM_STATUS_DOT: Readonly<Record<StreamStatus, string>> = {
  */
 export const CanvasToolbar = (): JSX.Element => {
   const { addNodeAtViewportCenter } = useGraphManipulation();
-  const { beginRun, cancelRun } = useGraphActions();
   const activeRun = useActiveRun();
   const streamStatus = useGraphStore((state) => state.streamStatus);
 
@@ -70,7 +70,7 @@ export const CanvasToolbar = (): JSX.Element => {
       <div className="border-t border-border pt-2">
         <button
           type="button"
-          onClick={isRunning ? cancelRun : beginRun}
+          onClick={isRunning ? stopRun : startRun}
           className={cn(
             'flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors',
             isRunning
