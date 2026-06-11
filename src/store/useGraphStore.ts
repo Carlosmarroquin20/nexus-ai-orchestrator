@@ -26,14 +26,16 @@ import {
 
 import { createDataFlowSlice, type DataFlowSlice } from './slices/dataFlowSlice';
 import { createGraphUiSlice, type GraphUiSlice } from './slices/graphUiSlice';
+import { createHistorySlice, type HistorySlice } from './slices/historySlice';
 
-export type GraphStore = GraphUiSlice & DataFlowSlice;
+export type GraphStore = GraphUiSlice & DataFlowSlice & HistorySlice;
 
 export const useGraphStore = create<GraphStore>()(
   devtools(
     (...args) => ({
       ...createGraphUiSlice(...args),
       ...createDataFlowSlice(...args),
+      ...createHistorySlice(...args),
     }),
     {
       name: 'NexusGraphStore',
@@ -68,6 +70,8 @@ const selectGraphActions = (state: GraphStore) => ({
   setNodeLabel: state.setNodeLabel,
   loadGraph: state.loadGraph,
   clearGraph: state.clearGraph,
+  applyUndo: state.applyUndo,
+  applyRedo: state.applyRedo,
   onNodesChange: state.onNodesChange,
   onEdgesChange: state.onEdgesChange,
   onConnect: state.onConnect,

@@ -48,8 +48,21 @@ export const useCanvasShortcuts = (): void => {
         return;
       }
 
-      // Every other shortcut is suppressed while a text control has focus.
+      // Every other shortcut is suppressed while a text control has focus
+      // (notably so Mod+Z drives the input's native undo, not the graph's).
       if (isEditableTarget(event.target)) return;
+
+      if (mod && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) useGraphStore.getState().applyRedo();
+        else useGraphStore.getState().applyUndo();
+        return;
+      }
+      if (mod && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        useGraphStore.getState().applyRedo();
+        return;
+      }
 
       const { deleteSelected, clearSelection, duplicateSelected } = useGraphStore.getState();
 
