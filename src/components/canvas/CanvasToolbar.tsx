@@ -1,11 +1,12 @@
 'use client';
 
 import { Panel } from '@xyflow/react';
-import { Play, Square } from 'lucide-react';
+import { Network, Play, Square } from 'lucide-react';
 
 import type { StreamStatus } from '@/store/slices/dataFlowSlice';
 import { NODE_KIND_ORDER, getNodeDescriptor } from '@/config/nodeRegistry';
 import { useActiveRun, useGraphStore } from '@/store/useGraphStore';
+import { useAutoLayout } from '@/hooks/useAutoLayout';
 import { useGraphManipulation } from '@/hooks/useGraphManipulation';
 import { startRun, stopRun } from '@/services/runExecutor';
 import { cn } from '@/utils/cn';
@@ -33,6 +34,7 @@ const STREAM_STATUS_DOT: Readonly<Record<StreamStatus, string>> = {
  */
 export const CanvasToolbar = (): JSX.Element => {
   const { addNodeAtViewportCenter } = useGraphManipulation();
+  const autoLayout = useAutoLayout();
   const activeRun = useActiveRun();
   const streamStatus = useGraphStore((state) => state.streamStatus);
 
@@ -65,6 +67,17 @@ export const CanvasToolbar = (): JSX.Element => {
             );
           })}
         </div>
+      </div>
+
+      <div className="border-t border-border pt-2">
+        <button
+          type="button"
+          onClick={autoLayout}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+        >
+          <Network className="size-3.5" aria-hidden />
+          Auto-layout
+        </button>
       </div>
 
       <div className="border-t border-border pt-2">

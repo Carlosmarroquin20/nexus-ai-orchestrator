@@ -7,6 +7,7 @@ import {
   LayoutTemplate,
   type LucideIcon,
   Maximize,
+  Network,
   Play,
   Plus,
   Search,
@@ -16,6 +17,7 @@ import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { NODE_KIND_ORDER, getNodeDescriptor } from '@/config/nodeRegistry';
+import { useAutoLayout } from '@/hooks/useAutoLayout';
 import { useGraphManipulation } from '@/hooks/useGraphManipulation';
 import { useGraphTransfer } from '@/hooks/useGraphPersistence';
 import { startRun, stopRun } from '@/services/runExecutor';
@@ -51,6 +53,7 @@ export const CommandPalette = (): JSX.Element => {
   const { selectNode } = useGraphActions();
   const { addNodeAtViewportCenter } = useGraphManipulation();
   const { exportToFile, loadDemo } = useGraphTransfer();
+  const autoLayout = useAutoLayout();
   const reactFlow = useReactFlow<NexusNode, NexusEdge>();
 
   const isRunning = activeRun?.status === 'running';
@@ -144,6 +147,17 @@ export const CommandPalette = (): JSX.Element => {
         },
       },
       {
+        id: 'view:layout',
+        label: 'Auto-layout',
+        hint: 'Action',
+        icon: Network,
+        keywords: 'layout arrange tidy organize topological layers',
+        perform: () => {
+          autoLayout();
+          setOpen(false);
+        },
+      },
+      {
         id: 'view:fit',
         label: 'Fit view',
         hint: 'Action',
@@ -168,7 +182,17 @@ export const CommandPalette = (): JSX.Element => {
     ];
 
     return [...nodeItems, ...addItems, ...actionItems];
-  }, [open, nodes, isRunning, selectNode, addNodeAtViewportCenter, exportToFile, loadDemo, reactFlow]);
+  }, [
+    open,
+    nodes,
+    isRunning,
+    selectNode,
+    addNodeAtViewportCenter,
+    exportToFile,
+    loadDemo,
+    autoLayout,
+    reactFlow,
+  ]);
 
   const filtered = useMemo<PaletteItem[]>(() => {
     const normalized = query.trim().toLowerCase();

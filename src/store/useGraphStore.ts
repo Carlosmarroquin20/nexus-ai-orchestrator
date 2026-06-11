@@ -68,6 +68,7 @@ const selectGraphActions = (state: GraphStore) => ({
   duplicateSelected: state.duplicateSelected,
   setNodeConfig: state.setNodeConfig,
   setNodeLabel: state.setNodeLabel,
+  applyLayout: state.applyLayout,
   loadGraph: state.loadGraph,
   clearGraph: state.clearGraph,
   applyUndo: state.applyUndo,

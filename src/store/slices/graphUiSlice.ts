@@ -83,6 +83,8 @@ export interface GraphUiSlice {
   readonly setNodeConfig: (nodeId: NodeId, config: NexusNodeConfig) => void;
   readonly setNodeLabel: (nodeId: NodeId, label: string) => void;
 
+  /** Repositions nodes from a layout map (by id); nodes absent from the map are kept. */
+  readonly applyLayout: (positionById: ReadonlyMap<string, { x: number; y: number }>) => void;
   /** Replaces the entire graph (persistence load / file import); clears selection. */
   readonly loadGraph: (nodes: NexusNode[], edges: NexusEdge[]) => void;
   /** Empties the graph and selection. */
@@ -243,6 +245,20 @@ export const createGraphUiSlice: GraphUiSliceCreator = (set) => ({
       }),
       false,
       'graphUi/selectNode',
+    ),
+
+  applyLayout: (positionById) =>
+    set(
+      (store) => ({
+        nodes: store.nodes.map((node) => {
+          const next = positionById.get(node.id);
+          return next === undefined
+            ? node
+            : (({ ...node, position: { x: next.x, y: next.y } }) as NexusNode);
+        }),
+      }),
+      false,
+      'graphUi/applyLayout',
     ),
 
   loadGraph: (nodes, edges) =>
