@@ -29,9 +29,11 @@ import {
   asRunId,
 } from '@/types/graph';
 import type { ExecutionDescriptor, ExecutionNodeParams, RunOutcome } from '@/types/execution';
+import { GEMINI_PRICING } from '@/config/telemetry';
 import { GeminiError, generateWithGemini } from '@/server/geminiClient';
 import { isFiniteNumber, isRecord, isString } from '@/utils/guards';
 import { topologicalOrder } from '@/utils/graphValidation';
+import { computeTokenCost } from '@/utils/telemetry';
 import { safeJsonParse } from '@/utils/telemetryEvent';
 
 export const dynamic = 'force-dynamic';
@@ -45,10 +47,12 @@ const SSE_HEADERS: Readonly<Record<string, string>> = {
 };
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
-// USD per 1M tokens. Estimate; reconcile with the model's published rate card.
-const GEMINI_PRICING = { inputPerMillionUSD: 0.1, outputPerMillionUSD: 0.4 };
 // Seed input handed to source nodes (no predecessors).
 const SEED_INPUT = 'How do I reset my account password?';
+
+// Server-side input guards: reject oversized payloads before doing any work.
+const MAX_GRAPH_PARAM_BYTES = 100_000;
+const MAX_NODES = 200;
 
 /** Wall-clock pacing for the simulated fallback (real mode is paced by the API). */
 const RUNNING_PHASE_MS = 420;
@@ -163,10 +167,6 @@ const buildEvent = (
   patch,
 });
 
-const geminiCost = (inputTokens: number, outputTokens: number): number =>
-  (inputTokens / 1_000_000) * GEMINI_PRICING.inputPerMillionUSD +
-  (outputTokens / 1_000_000) * GEMINI_PRICING.outputPerMillionUSD;
-
 /** Builds the prompt (and optional system instruction) for an LLM-backed node. */
 const buildPrompt = (
   kind: NexusNodeKind,
@@ -200,6 +200,9 @@ export async function GET(request: Request): Promise<Response> {
   if (runId === null || graphParam === null) {
     return new Response('Missing "runId" or "graph" query parameter.', { status: 400 });
   }
+  if (graphParam.length > MAX_GRAPH_PARAM_BYTES) {
+    return new Response('Graph descriptor exceeds the size limit.', { status: 413 });
+  }
 
   const descriptor = parseDescriptor(safeJsonParse(graphParam));
   if (descriptor === null) {
@@ -207,6 +210,9 @@ export async function GET(request: Request): Promise<Response> {
   }
   if (descriptor.nodes.length === 0) {
     return new Response('Graph has no nodes to execute.', { status: 400 });
+  }
+  if (descriptor.nodes.length > MAX_NODES) {
+    return new Response(`Graph exceeds the ${MAX_NODES}-node execution limit.`, { status: 413 });
   }
 
   const failRateParam = Number(url.searchParams.get('failRate'));
@@ -292,7 +298,7 @@ export async function GET(request: Request): Promise<Response> {
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         latencyMs: result.latencyMs,
-        costInUSD: geminiCost(result.inputTokens, result.outputTokens),
+        costInUSD: computeTokenCost(GEMINI_PRICING, result.inputTokens, result.outputTokens),
       };
     }
 

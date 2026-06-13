@@ -51,6 +51,16 @@ export const FALLBACK_PRICING: TokenPricing = {
 };
 
 /**
+ * Estimated Gemini pricing (USD per 1M tokens) used by the real execution
+ * backend. An estimate — reconcile with the configured model's published rate
+ * card before treating run costs as anything but approximate.
+ */
+export const GEMINI_PRICING: TokenPricing = {
+  inputPerMillionUSD: 0.1,
+  outputPerMillionUSD: 0.4,
+};
+
+/**
  * Latency classification thresholds in milliseconds. The inspector buckets a
  * node's `latencyMs` into nominal (< degraded), degraded ([degraded, critical)),
  * and critical (>= critical) bands for color coding.
