@@ -1,8 +1,9 @@
 'use client';
 
-import { Trash2 } from 'lucide-react';
+import { FileJson, Trash2 } from 'lucide-react';
 
 import { RunStatusBadge } from '@/components/shared/RunStatusBadge';
+import { useGraphTransfer } from '@/hooks/useGraphPersistence';
 import { useGraphActions, useGraphStore, useRunHistory } from '@/store/useGraphStore';
 import { cn } from '@/utils/cn';
 import { formatCostUSD, formatExactTokens, formatLatency, formatTimestamp } from '@/utils/format';
@@ -11,6 +12,7 @@ export const RunHistoryPanel = (): JSX.Element => {
   const runs = useRunHistory();
   const activeRunId = useGraphStore((state) => state.activeRunId);
   const { clearRunHistory } = useGraphActions();
+  const { exportRunTrace } = useGraphTransfer();
 
   return (
     <section className="flex flex-col gap-2 rounded-md border border-border bg-card p-3">
@@ -45,11 +47,22 @@ export const RunHistoryPanel = (): JSX.Element => {
                   run.id === activeRunId ? 'border-state-running/50 bg-state-running/5' : 'border-border',
                 )}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-[11px] text-muted-foreground">
                     {formatTimestamp(run.startedAt)}
                   </span>
-                  <RunStatusBadge status={run.status} />
+                  <div className="flex items-center gap-1.5">
+                    <RunStatusBadge status={run.status} />
+                    <button
+                      type="button"
+                      onClick={() => exportRunTrace(run)}
+                      aria-label="Export OpenTelemetry trace"
+                      title="Export OpenTelemetry trace (OTLP/JSON)"
+                      className="text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <FileJson className="size-3.5" aria-hidden />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-1.5 grid grid-cols-3 gap-2 text-[11px]">

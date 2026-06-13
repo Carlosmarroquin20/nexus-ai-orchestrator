@@ -128,6 +128,9 @@ outputs (a fixed seed for sources). A failed node marks its transitive descendan
 - **Persistence:** the graph auto-saves to `localStorage` and survives reloads; import/export
   as JSON. Telemetry is never persisted (it is execution state, rehydrated to pristine).
 - **Auto-layout:** topological layer layout.
+- **Observability:** export any recorded run as an **OpenTelemetry (OTLP/JSON) trace** — a root
+  span for the run and a child span per node, with token/cost/latency attributes — ingestible by
+  Jaeger, Tempo, or Grafana.
 
 ### Keyboard shortcuts
 

@@ -4,6 +4,8 @@ import { useEffect, useMemo } from 'react';
 
 import { createDemoPipeline } from '@/config/demoPipeline';
 import { useGraphStore } from '@/store/useGraphStore';
+import type { PipelineRun } from '@/types/graph';
+import { runToOtlpTrace } from '@/utils/otelExport';
 import {
   GRAPH_STORAGE_KEY,
   type GraphParseResult,
@@ -73,6 +75,8 @@ export interface GraphTransferApi {
   readonly importFromFile: (file: File) => Promise<GraphParseResult>;
   /** Replaces the current graph with the bundled example pipeline. */
   readonly loadDemo: () => void;
+  /** Exports a recorded run as an OpenTelemetry (OTLP/JSON) trace file. */
+  readonly exportRunTrace: (run: PipelineRun) => void;
   readonly clearGraph: () => void;
 }
 
@@ -100,6 +104,15 @@ export const useGraphTransfer = (): GraphTransferApi =>
       loadDemo: () => {
         const { nodes, edges } = createDemoPipeline();
         useGraphStore.getState().loadGraph(nodes, edges);
+      },
+      exportRunTrace: (run) => {
+        const info = new Map(
+          useGraphStore
+            .getState()
+            .nodes.map((node) => [node.id, { label: node.data.label, kind: node.data.kind }]),
+        );
+        const stamp = new Date(run.startedAt).toISOString().replace(/[:.]/g, '-');
+        downloadJson(JSON.stringify(runToOtlpTrace(run, info), null, 2), `nexus-trace-${stamp}.json`);
       },
       clearGraph: () => useGraphStore.getState().clearGraph(),
     }),
