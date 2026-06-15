@@ -79,6 +79,9 @@ src/
 └── utils/                # Pure functions: validation, telemetry, analysis, serialization
 ```
 
+The rationale behind the major decisions is recorded as
+[Architecture Decision Records](docs/adr/README.md).
+
 ### State
 
 The store is composed from decoupled slices sharing one `set`/`get`:
