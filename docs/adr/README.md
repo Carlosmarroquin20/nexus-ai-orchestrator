@@ -13,3 +13,4 @@ alternatives weighed), so the reasoning behind the codebase is explicit and revi
 | [0004](0004-telemetry-is-execution-state.md)             | Telemetry is execution state, not document state               | Accepted |
 | [0005](0005-server-streamed-dual-execution-backend.md)   | Execution as a server-streamed dual backend (Gemini + simulator) | Accepted |
 | [0006](0006-verification-strategy.md)                    | Verification strategy independent of manual QA                 | Accepted |
+| [0007](0007-llm-provider-port-adapter.md)                | LLM execution behind a provider port (ports & adapters)        | Accepted |

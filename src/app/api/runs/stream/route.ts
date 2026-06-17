@@ -29,8 +29,8 @@ import {
   asRunId,
 } from '@/types/graph';
 import type { ExecutionDescriptor, ExecutionNodeParams, RunOutcome } from '@/types/execution';
-import { GEMINI_PRICING } from '@/config/telemetry';
-import { GeminiError, generateWithGemini } from '@/server/geminiClient';
+import { LlmError } from '@/server/llm/types';
+import { resolveLlmProvider } from '@/server/llm/resolveProvider';
 import { isFiniteNumber, isRecord, isString } from '@/utils/guards';
 import { topologicalOrder } from '@/utils/graphValidation';
 import { computeTokenCost } from '@/utils/telemetry';
@@ -46,7 +46,6 @@ const SSE_HEADERS: Readonly<Record<string, string>> = {
   'X-Accel-Buffering': 'no',
 };
 
-const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
 // Seed input handed to source nodes (no predecessors).
 const SEED_INPUT = 'How do I reset my account password?';
 
@@ -218,10 +217,10 @@ export async function GET(request: Request): Promise<Response> {
   const failRateParam = Number(url.searchParams.get('failRate'));
   const failRate = isFiniteNumber(failRateParam) ? Math.min(Math.max(failRateParam, 0), 1) : 0;
 
-  // Server-only credentials. Absent key -> simulated fallback. Never client-exposed.
-  const apiKey = process.env['GEMINI_API_KEY'];
-  const model = process.env['GEMINI_MODEL'] ?? DEFAULT_GEMINI_MODEL;
-  const realMode = typeof apiKey === 'string' && apiKey.length > 0;
+  // Resolve the LLM provider from the server env (port/adapter). Absent provider
+  // -> simulated fallback. Credentials live in the adapter, never client-exposed.
+  const provider = resolveLlmProvider();
+  const realMode = provider !== null;
 
   const order =
     topologicalOrder(descriptor.nodes, descriptor.edges) ?? descriptor.nodes.map((node) => node.id);
@@ -282,11 +281,9 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     // LLM-backed kinds: AGENT, LLM_CORE, CLASSIFIER.
-    if (apiKey) {
+    if (provider !== null) {
       const { systemInstruction, prompt } = buildPrompt(kind, params, inputText);
-      const result = await generateWithGemini({
-        apiKey,
-        model,
+      const result = await provider.generate({
         prompt,
         ...(systemInstruction !== undefined ? { systemInstruction } : {}),
         ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
@@ -298,7 +295,7 @@ export async function GET(request: Request): Promise<Response> {
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         latencyMs: result.latencyMs,
-        costInUSD: computeTokenCost(GEMINI_PRICING, result.inputTokens, result.outputTokens),
+        costInUSD: computeTokenCost(provider.pricing, result.inputTokens, result.outputTokens),
       };
     }
 
@@ -381,7 +378,7 @@ export async function GET(request: Request): Promise<Response> {
           );
         } catch (error) {
           if (aborted) break;
-          const code = error instanceof GeminiError ? `GEMINI_${error.status}` : 'EXECUTION_ERROR';
+          const code = error instanceof LlmError ? `LLM_${error.status}` : 'EXECUTION_ERROR';
           sendEvent(
             buildEvent(runId, nodeId, 'failed', {
               error: {
