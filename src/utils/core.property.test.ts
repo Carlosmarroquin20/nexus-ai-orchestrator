@@ -8,7 +8,12 @@ import {
   type NodeExecutionState,
 } from '@/types/graph';
 import { createPristineTelemetry } from '@/config/telemetry';
-import { detectCycle, isAdmissibleConnection, topologicalOrder } from '@/utils/graphValidation';
+import {
+  computeExecutionLevels,
+  detectCycle,
+  isAdmissibleConnection,
+  topologicalOrder,
+} from '@/utils/graphValidation';
 import { GRAPH_SCHEMA_VERSION, parseGraph, serializeGraph } from '@/utils/graphSerialization';
 import { computeCriticalPathLatencyMs } from '@/utils/runAnalysis';
 import { reconcileTelemetry } from '@/utils/telemetry';
@@ -118,6 +123,23 @@ describe('graph topology invariants', () => {
         const target = ids[targetIndex % ids.length]!;
         if (isAdmissibleConnection(nodes, edges, source, target)) {
           expect(detectCycle(nodes, [...edges, { source, target }])).toBe(false);
+        }
+      }),
+    );
+  });
+
+  it('execution levels schedule every node once with edges crossing upward', () => {
+    fc.assert(
+      fc.property(dagArb, ({ nodes, edges }) => {
+        const levels = computeExecutionLevels(nodes, edges);
+        const levelOf = new Map<string, number>();
+        levels.forEach((level, index) => level.forEach((id) => levelOf.set(id, index)));
+
+        // Every node is scheduled exactly once.
+        expect([...levels.flat()].sort()).toEqual(nodes.map((node) => node.id).sort());
+        // Edges strictly increase the level, so same-level nodes are independent.
+        for (const edge of edges) {
+          expect(levelOf.get(edge.source)!).toBeLessThan(levelOf.get(edge.target)!);
         }
       }),
     );

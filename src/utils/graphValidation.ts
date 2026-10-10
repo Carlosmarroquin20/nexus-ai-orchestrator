@@ -162,6 +162,41 @@ export const topologicalOrder = (
 };
 
 /**
+ * Groups nodes into execution levels by longest-path rank: level `k` holds nodes
+ * whose deepest dependency chain from a source has length `k`. Because edges
+ * always cross from a lower to a higher level, nodes within a level are mutually
+ * independent and may run concurrently. A cyclic graph (no topological order)
+ * collapses to a single level. Complexity O(V + E).
+ */
+export const computeExecutionLevels = (
+  nodes: readonly NodeIdentified[],
+  edges: readonly DirectedEdgeLike[],
+): string[][] => {
+  if (nodes.length === 0) return [];
+  const order = topologicalOrder(nodes, edges);
+  if (order === null) return [nodes.map((node) => node.id)];
+
+  const adjacency = buildAdjacency(nodes, edges);
+  const rank = new Map<string, number>();
+  for (const node of nodes) rank.set(node.id, 0);
+  for (const id of order) {
+    const current = rank.get(id) ?? 0;
+    for (const next of adjacency.get(id) ?? []) {
+      rank.set(next, Math.max(rank.get(next) ?? 0, current + 1));
+    }
+  }
+
+  const byRank = new Map<number, string[]>();
+  for (const node of nodes) {
+    const level = rank.get(node.id) ?? 0;
+    const bucket = byRank.get(level);
+    if (bucket === undefined) byRank.set(level, [node.id]);
+    else bucket.push(node.id);
+  }
+  return [...byRank.keys()].sort((a, b) => a - b).map((level) => byRank.get(level)!);
+};
+
+/**
  * Connection admissibility check for `onConnect`. Rejects self-loops, duplicate
  * parallel edges, and any connection that would violate the DAG invariant.
  */

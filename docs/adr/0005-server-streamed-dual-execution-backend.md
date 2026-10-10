@@ -19,8 +19,10 @@ Server-Sent Events: one `running` then one `completed`/`failed` per node, a name
   key is read from `process.env` (never `NEXT_PUBLIC_`), sent via the `x-goog-api-key`
   header (not the URL), with per-attempt timeout and retry/backoff on transient failures.
 - **Simulated mode** (no key): deterministic per-kind telemetry, so the app runs offline.
-- Output flows downstream (predecessors' outputs become a successor's input) in
-  topological order; a failed node marks its transitive descendants `skipped`.
+- Output flows downstream (predecessors' outputs become a successor's input). Nodes
+  are executed in topological **levels** (longest-path rank); nodes within a level are
+  independent and run concurrently, matching the parallelism the critical-path metric
+  assumes. A failed node marks its transitive descendants `skipped`.
 - The graph topology travels in the SSE GET query string.
 
 ## Consequences

@@ -107,8 +107,9 @@ diagnostics, and (de)serialization. Run `npm test`.
 ### Execution backend
 
 `GET /api/runs/stream` is a Server-Sent Events endpoint that sequences the graph in
-topological order and streams `TelemetryEvent` frames (one `running`, then `completed` or
-`failed`, per node) plus a terminal `done` event.
+topological levels — nodes within a level are independent and run concurrently — and
+streams `TelemetryEvent` frames (one `running`, then `completed` or `failed`, per node)
+plus a terminal `done` event.
 
 - **Real mode** (`GEMINI_API_KEY` set): LLM-backed nodes (`AGENT`, `LLM_CORE`, `CLASSIFIER`)
   call Gemini and report real latency, token usage, and output. Requests are retried with

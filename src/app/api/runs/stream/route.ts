@@ -1,10 +1,11 @@
 /**
  * Server-sent execution stream: `GET /api/runs/stream?runId=<id>&graph=<json>`.
  *
- * Executes the supplied graph in topological order, streaming a `running` frame
- * then a `completed` (or `failed`) frame per node, and a terminal `done` event.
- * Output text flows downstream: each node's input is the concatenation of its
- * predecessors' outputs (a fixed seed for sources).
+ * Executes the supplied graph level by level (longest-path rank), running the
+ * mutually independent nodes of a level concurrently and streaming a `running`
+ * frame then a `completed` (or `failed`) frame per node, and a terminal `done`
+ * event. Output text flows downstream: each node's input is the concatenation of
+ * its predecessors' outputs (a fixed seed for sources).
  *
  * Execution mode is chosen at request time:
  * - Real: when `GEMINI_API_KEY` is set, LLM-backed nodes (AGENT/LLM_CORE/
@@ -32,7 +33,7 @@ import type { ExecutionDescriptor, ExecutionNodeParams, RunOutcome } from '@/typ
 import { LlmError } from '@/server/llm/types';
 import { resolveLlmProvider } from '@/server/llm/resolveProvider';
 import { isFiniteNumber, isRecord, isString } from '@/utils/guards';
-import { topologicalOrder } from '@/utils/graphValidation';
+import { computeExecutionLevels } from '@/utils/graphValidation';
 import { computeTokenCost } from '@/utils/telemetry';
 import { safeJsonParse } from '@/utils/telemetryEvent';
 
@@ -222,8 +223,7 @@ export async function GET(request: Request): Promise<Response> {
   const provider = resolveLlmProvider();
   const realMode = provider !== null;
 
-  const order =
-    topologicalOrder(descriptor.nodes, descriptor.edges) ?? descriptor.nodes.map((node) => node.id);
+  const levels = computeExecutionLevels(descriptor.nodes, descriptor.edges);
   const kindById = new Map(descriptor.nodes.map((node) => [node.id, node.kind]));
   const paramsById = new Map(descriptor.nodes.map((node) => [node.id, node.params ?? {}]));
 
@@ -334,12 +334,12 @@ export async function GET(request: Request): Promise<Response> {
       let outcome: RunOutcome = 'completed';
       const skipped = new Set<string>();
 
-      for (const nodeId of order) {
-        if (aborted) break;
+      const runNode = async (nodeId: string): Promise<void> => {
+        if (aborted) return;
 
         if (skipped.has(nodeId)) {
           sendEvent(buildEvent(runId, nodeId, 'skipped', {}));
-          continue;
+          return;
         }
 
         const kind = kindById.get(nodeId) ?? 'PROMPT_TEMPLATE';
@@ -349,7 +349,7 @@ export async function GET(request: Request): Promise<Response> {
         sendEvent(buildEvent(runId, nodeId, 'running', { inputPayload: { input: truncate(inputText, 280) } }));
         if (!realMode) {
           await sleep(RUNNING_PHASE_MS);
-          if (aborted) break;
+          if (aborted) return;
         }
 
         if (failRate > 0 && Math.random() < failRate) {
@@ -360,12 +360,12 @@ export async function GET(request: Request): Promise<Response> {
           );
           outcome = 'failed';
           for (const descendant of descendantsOf(nodeId)) skipped.add(descendant);
-          continue;
+          return;
         }
 
         try {
           const result = await execute(kind, params, inputText);
-          if (aborted) break;
+          if (aborted) return;
           outputById.set(nodeId, result.outputText);
           sendEvent(
             buildEvent(runId, nodeId, 'completed', {
@@ -377,7 +377,7 @@ export async function GET(request: Request): Promise<Response> {
             }),
           );
         } catch (error) {
-          if (aborted) break;
+          if (aborted) return;
           const code = error instanceof LlmError ? `LLM_${error.status}` : 'EXECUTION_ERROR';
           sendEvent(
             buildEvent(runId, nodeId, 'failed', {
@@ -391,7 +391,14 @@ export async function GET(request: Request): Promise<Response> {
           outcome = 'failed';
           for (const descendant of descendantsOf(nodeId)) skipped.add(descendant);
         }
+      };
 
+      // Execute level by level. Within a level the nodes are mutually independent
+      // (edges only cross to higher levels), so they run concurrently — matching
+      // the parallelism the critical-path metric assumes.
+      for (const level of levels) {
+        if (aborted) break;
+        await Promise.all(level.map((nodeId) => runNode(nodeId)));
         if (!realMode && !aborted) await sleep(INTER_NODE_GAP_MS);
       }
 

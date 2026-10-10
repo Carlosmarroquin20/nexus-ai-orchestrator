@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  computeExecutionLevels,
   detectCycle,
   isAdmissibleConnection,
   topologicalOrder,
@@ -55,5 +56,33 @@ describe('connection admissibility', () => {
 
   it('admits a valid new edge', () => {
     expect(isAdmissibleConnection(n('a', 'b', 'c'), e([['a', 'b']]), 'b', 'c')).toBe(true);
+  });
+});
+
+describe('computeExecutionLevels', () => {
+  it('places a linear chain in one node per level', () => {
+    expect(computeExecutionLevels(n('a', 'b', 'c'), e([['a', 'b'], ['b', 'c']]))).toEqual([
+      ['a'],
+      ['b'],
+      ['c'],
+    ]);
+  });
+
+  it('groups independent nodes of a diamond into the same level', () => {
+    const levels = computeExecutionLevels(
+      n('a', 'b', 'c', 'd'),
+      e([['a', 'b'], ['a', 'c'], ['b', 'd'], ['c', 'd']]),
+    );
+    expect(levels[0]).toEqual(['a']);
+    expect(levels[1]!.slice().sort()).toEqual(['b', 'c']);
+    expect(levels[2]).toEqual(['d']);
+  });
+
+  it('collapses a cyclic graph into a single level', () => {
+    expect(computeExecutionLevels(n('a', 'b'), e([['a', 'b'], ['b', 'a']]))).toEqual([['a', 'b']]);
+  });
+
+  it('returns no levels for an empty graph', () => {
+    expect(computeExecutionLevels([], [])).toEqual([]);
   });
 });
