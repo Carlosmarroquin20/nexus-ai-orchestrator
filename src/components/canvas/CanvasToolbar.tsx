@@ -29,7 +29,7 @@ const STREAM_STATUS_DOT: Readonly<Record<StreamStatus, string>> = {
 
 /**
  * Canvas overlay: the node palette (instantiates variants at viewport center)
- * and the run/stream controls. Subscribes only to action references and the two
+ * and the run/stream controls. Subscribes only to action references and the
  * scalar status fields it renders, so node-level telemetry updates never re-render it.
  */
 export const CanvasToolbar = (): JSX.Element => {
@@ -40,8 +40,12 @@ export const CanvasToolbar = (): JSX.Element => {
   const runMode = useGraphStore((state) => state.runMode);
   const failRate = useGraphStore((state) => state.failRate);
   const setFailRate = useGraphStore((state) => state.setFailRate);
+  // Boolean selector: re-renders only when the graph becomes empty or non-empty.
+  const isGraphEmpty = useGraphStore((state) => state.nodes.length === 0);
 
   const isRunning = activeRun?.status === 'running';
+  // `startRun` is a no-op on an empty graph; surface that instead of ignoring the click.
+  const cannotExecute = !isRunning && isGraphEmpty;
 
   return (
     <Panel
@@ -87,8 +91,10 @@ export const CanvasToolbar = (): JSX.Element => {
         <button
           type="button"
           onClick={isRunning ? stopRun : startRun}
+          disabled={cannotExecute}
+          {...(cannotExecute ? { title: 'Add a node to execute the pipeline' } : {})}
           className={cn(
-            'flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors',
+            'flex w-full items-center justify-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40',
             isRunning
               ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
               : 'bg-primary text-primary-foreground hover:bg-primary/90',

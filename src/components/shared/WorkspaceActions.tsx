@@ -38,7 +38,8 @@ export const WorkspaceActions = (): JSX.Element => {
   };
 
   const onClear = (): void => {
-    if (window.confirm('Discard the current pipeline? This action cannot be undone.')) {
+    // Clearing is a recorded structural edit, so the prompt must not claim otherwise.
+    if (window.confirm('Clear the current pipeline? You can restore it with Undo.')) {
       clearGraph();
     }
   };
