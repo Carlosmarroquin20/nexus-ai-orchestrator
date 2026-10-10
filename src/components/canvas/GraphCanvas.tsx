@@ -8,7 +8,7 @@ import {
   type OnSelectionChangeParams,
   ReactFlow,
 } from '@xyflow/react';
-import { useCallback } from 'react';
+import { type JSX, useCallback } from 'react';
 
 import { getNodeDescriptor } from '@/config/nodeRegistry';
 import { useGraphActions, useNexusEdges, useNexusNodes } from '@/store/useGraphStore';

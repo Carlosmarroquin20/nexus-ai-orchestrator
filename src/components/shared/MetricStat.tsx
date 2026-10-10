@@ -1,3 +1,5 @@
+import type { JSX } from 'react';
+
 import { cn } from '@/utils/cn';
 
 export type MetricTone = 'default' | 'success' | 'warning' | 'critical';

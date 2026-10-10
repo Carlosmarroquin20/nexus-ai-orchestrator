@@ -1,7 +1,7 @@
 'use client';
 
 import { Handle, type NodeProps, Position } from '@xyflow/react';
-import { memo } from 'react';
+import { type JSX, memo } from 'react';
 
 import { MetricStat, type MetricTone } from '@/components/shared/MetricStat';
 import { StatePill } from '@/components/shared/StatePill';

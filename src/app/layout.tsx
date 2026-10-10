@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import type { ReactNode } from 'react';
+import type { JSX, ReactNode } from 'react';
 
 // React Flow base styles are imported before the design-system stylesheet so the
 // `.react-flow` token overrides in globals.css take precedence over library defaults.

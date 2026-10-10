@@ -1,7 +1,7 @@
 'use client';
 
 import { useReactFlow } from '@xyflow/react';
-import { useMemo } from 'react';
+import { type JSX, useMemo } from 'react';
 
 import { useGraphActions, useNexusEdges, useNexusNodes } from '@/store/useGraphStore';
 import type { NexusEdge, NexusNode, NodeId } from '@/types/graph';

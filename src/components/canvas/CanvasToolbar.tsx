@@ -2,6 +2,7 @@
 
 import { Panel } from '@xyflow/react';
 import { Network, Play, Square } from 'lucide-react';
+import type { JSX } from 'react';
 
 import type { StreamStatus } from '@/store/slices/dataFlowSlice';
 import { NODE_KIND_ORDER, getNodeDescriptor } from '@/config/nodeRegistry';

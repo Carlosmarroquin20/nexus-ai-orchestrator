@@ -1,3 +1,5 @@
+import type { JSX } from 'react';
+
 import type { NodeExecutionState } from '@/types/graph';
 import { cn } from '@/utils/cn';
 

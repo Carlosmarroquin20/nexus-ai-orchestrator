@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import { MetricStat } from '@/components/shared/MetricStat';
 import { StatePill } from '@/components/shared/StatePill';
 import { ScrollArea } from '@/components/ui/scroll-area';

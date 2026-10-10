@@ -1,6 +1,7 @@
 'use client';
 
 import { Sparkles } from 'lucide-react';
+import type { JSX } from 'react';
 
 import { useGraphTransfer } from '@/hooks/useGraphPersistence';
 

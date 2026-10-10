@@ -1,3 +1,5 @@
+import type { JSX } from 'react';
+
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 /** Serializes a payload defensively; cyclic or non-serializable graphs degrade gracefully. */

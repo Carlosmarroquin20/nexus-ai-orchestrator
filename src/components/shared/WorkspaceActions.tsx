@@ -1,7 +1,7 @@
 'use client';
 
 import { Download, Redo2, Trash2, Undo2, Upload } from 'lucide-react';
-import { type ChangeEvent, useRef, useState } from 'react';
+import { type ChangeEvent, type JSX, useRef, useState } from 'react';
 
 import { useGraphActions, useGraphStore } from '@/store/useGraphStore';
 import { useGraphTransfer } from '@/hooks/useGraphPersistence';

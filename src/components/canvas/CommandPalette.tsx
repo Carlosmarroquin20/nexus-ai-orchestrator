@@ -13,7 +13,7 @@ import {
   Search,
   Square,
 } from 'lucide-react';
-import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { type JSX, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { NODE_KIND_ORDER, getNodeDescriptor } from '@/config/nodeRegistry';

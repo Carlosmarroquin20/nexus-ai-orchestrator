@@ -1,6 +1,7 @@
 'use client';
 
 import { FileJson, Trash2 } from 'lucide-react';
+import type { JSX } from 'react';
 
 import { RunStatusBadge } from '@/components/shared/RunStatusBadge';
 import { useGraphTransfer } from '@/hooks/useGraphPersistence';

@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactFlowProvider } from '@xyflow/react';
+import type { JSX } from 'react';
 
 import { CommandPalette } from '@/components/canvas/CommandPalette';
 import { GraphCanvas } from '@/components/canvas/GraphCanvas';

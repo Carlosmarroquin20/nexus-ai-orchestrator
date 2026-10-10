@@ -1,6 +1,7 @@
 'use client';
 
 import { Panel } from '@xyflow/react';
+import type { JSX } from 'react';
 
 const SHORTCUTS: readonly { readonly keys: string; readonly label: string }[] = [
   { keys: 'Del', label: 'Delete' },

@@ -1,7 +1,7 @@
 'use client';
 
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps, getBezierPath } from '@xyflow/react';
-import { memo } from 'react';
+import { type JSX, memo } from 'react';
 
 import type { NexusEdge } from '@/types/graph';
 

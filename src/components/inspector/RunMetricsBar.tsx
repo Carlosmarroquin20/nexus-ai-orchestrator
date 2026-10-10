@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import { MetricStat } from '@/components/shared/MetricStat';
 import { RunStatusBadge } from '@/components/shared/RunStatusBadge';
 import { useActiveRun, useActiveRunMetrics } from '@/store/useGraphStore';

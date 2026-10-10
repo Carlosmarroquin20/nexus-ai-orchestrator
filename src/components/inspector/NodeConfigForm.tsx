@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import { useGraphActions, useNexusNodes } from '@/store/useGraphStore';
 import {
   NODE_KIND,
