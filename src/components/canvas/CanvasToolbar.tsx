@@ -38,6 +38,7 @@ export const CanvasToolbar = (): JSX.Element => {
   const autoLayout = useAutoLayout();
   const activeRun = useActiveRun();
   const streamStatus = useGraphStore((state) => state.streamStatus);
+  const streamError = useGraphStore((state) => state.streamError);
   const runMode = useGraphStore((state) => state.runMode);
   const failRate = useGraphStore((state) => state.failRate);
   const setFailRate = useGraphStore((state) => state.setFailRate);
@@ -130,6 +131,12 @@ export const CanvasToolbar = (): JSX.Element => {
             </span>
           ) : null}
         </div>
+        {streamError !== null ? (
+          // Width-capped so a long reason wraps instead of stretching the toolbar.
+          <p role="alert" className="mt-1 max-w-44 break-words px-1 text-[11px] text-state-failed">
+            {streamError}
+          </p>
+        ) : null}
 
         <div className="mt-2 flex flex-col gap-1 px-1">
           <label

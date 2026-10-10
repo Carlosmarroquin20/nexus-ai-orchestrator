@@ -40,6 +40,11 @@ export interface DataFlowSlice {
   /** Run ids in chronological start order; the last element is the newest run. */
   readonly runOrder: RunId[];
   readonly streamStatus: StreamStatus;
+  /**
+   * Human-readable reason for the last stream failure. Non-null only while
+   * `streamStatus` is `'error'`; any other status clears it.
+   */
+  readonly streamError: string | null;
   /** Fault-injection probability [0,1] forwarded to the execution stream. */
   readonly failRate: number;
   /** Execution mode reported by the stream for the current/last run; null until known. */
@@ -67,7 +72,8 @@ export interface DataFlowSlice {
   readonly cancelRun: () => void;
   /** Clears recorded runs, retaining only the active run (if any). */
   readonly clearRunHistory: () => void;
-  readonly setStreamStatus: (status: StreamStatus) => void;
+  /** Sets the transport status; `reason` is retained only for the `'error'` status. */
+  readonly setStreamStatus: (status: StreamStatus, reason?: string) => void;
   /** Sets the fault-injection probability (clamped to [0,1]). */
   readonly setFailRate: (rate: number) => void;
   readonly setRunMode: (mode: ExecutionMode | null) => void;
@@ -109,6 +115,7 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
   runsById: {},
   runOrder: [],
   streamStatus: 'disconnected',
+  streamError: null,
   failRate: 0,
   runMode: null,
 
@@ -218,7 +225,12 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
       'dataFlow/clearRunHistory',
     ),
 
-  setStreamStatus: (status) => set({ streamStatus: status }, false, 'dataFlow/setStreamStatus'),
+  setStreamStatus: (status, reason) =>
+    set(
+      { streamStatus: status, streamError: status === 'error' ? (reason ?? null) : null },
+      false,
+      'dataFlow/setStreamStatus',
+    ),
 
   setFailRate: (rate) =>
     set({ failRate: Math.min(Math.max(rate, 0), 1) }, false, 'dataFlow/setFailRate'),

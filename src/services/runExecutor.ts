@@ -14,7 +14,8 @@
  * Flow: `startRun` opens a run in the store (resetting telemetry, minting the
  * runId), posts the topology, and feeds decoded frames to `ingestTelemetryEvent`.
  * The server's `done` event finalizes the run. A rejected request, a transport
- * error, or a stream that closes without `done` finalizes it as failed.
+ * error, or a stream that closes without `done` finalizes it as failed and records
+ * the reason alongside the stream status.
  *
  * Staleness: every asynchronous continuation re-checks that its controller is
  * still the active one before touching the store, so a stream that was stopped or
@@ -34,6 +35,15 @@ import { INITIAL_SSE_STATE, type SseEvent, feedSse } from '@/utils/sseParser';
 import { parseTelemetryEvent, safeJsonParse } from '@/utils/telemetryEvent';
 
 const STREAM_ENDPOINT = '/api/runs/stream';
+
+/** Display bound for a server-supplied rejection reason. */
+const MAX_REASON_LENGTH = 200;
+
+/** Reasons for failures that carry no server-supplied message. */
+const FAILURE_REASON = {
+  unreachable: 'Could not reach the execution endpoint.',
+  interrupted: 'The stream closed before the run finished.',
+} as const;
 
 let activeController: AbortController | null = null;
 
@@ -108,11 +118,23 @@ const applyEvent = (event: SseEvent): boolean => {
 };
 
 /** Finalizes the active run as failed after a rejected request or a broken stream. */
-const failRun = (): void => {
+const failRun = (reason: string): void => {
   const store = useGraphStore.getState();
   store.finalizeRun('failed');
   activeController = null;
-  store.setStreamStatus('error');
+  store.setStreamStatus('error', reason);
+};
+
+/**
+ * Reason for a non-2xx response. The route answers rejections in plain text; any
+ * other body (a framework or proxy error page) is not fit for display, so only the
+ * status is reported for it.
+ */
+const readRejection = async (response: Response): Promise<string> => {
+  const fallback = `Run request rejected (HTTP ${response.status}).`;
+  if (!(response.headers.get('content-type') ?? '').startsWith('text/plain')) return fallback;
+  const text = (await response.text().catch(() => '')).trim();
+  return text.length > 0 ? text.slice(0, MAX_REASON_LENGTH) : fallback;
 };
 
 const consumeStream = async (
@@ -131,7 +153,8 @@ const consumeStream = async (
     });
     if (!isCurrent()) return;
     if (!response.ok || response.body === null) {
-      failRun();
+      const reason = await readRejection(response);
+      if (isCurrent()) failRun(reason);
       return;
     }
     useGraphStore.getState().setStreamStatus('open');
@@ -153,11 +176,11 @@ const consumeStream = async (
       }
     }
     // The body ended without a `done` event: the server went away mid-run.
-    failRun();
+    failRun(FAILURE_REASON.interrupted);
   } catch {
     // An abort issued by `teardown` has already cleared the controller, so it is
     // filtered out here; anything else is a genuine transport failure.
-    if (isCurrent()) failRun();
+    if (isCurrent()) failRun(FAILURE_REASON.unreachable);
   }
 };
 

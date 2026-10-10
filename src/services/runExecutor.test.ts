@@ -142,6 +142,34 @@ describe('startRun', () => {
     await vi.waitFor(() => expect(store().activeRunId).toBeNull());
     expect(lastRun().status).toBe('failed');
     expect(store().streamStatus).toBe('error');
+    expect(store().streamError).toBe('Graph exceeds the 200-node execution limit.');
+  });
+
+  it('reports only the status when a rejection body is not plain text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('<html><body>Bad Gateway</body></html>', {
+            status: 502,
+            headers: { 'Content-Type': 'text/html' },
+          }),
+      ),
+    );
+    startRun();
+    await vi.waitFor(() => expect(store().activeRunId).toBeNull());
+    expect(store().streamError).toBe('Run request rejected (HTTP 502).');
+  });
+
+  it('clears the previous failure reason when a new run starts', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('Malformed graph descriptor.', { status: 400 })));
+    startRun();
+    await vi.waitFor(() => expect(store().streamError).toBe('Malformed graph descriptor.'));
+
+    stubStreamingFetch();
+    startRun();
+    expect(store().streamStatus).toBe('connecting');
+    expect(store().streamError).toBeNull();
   });
 
   it('finalizes the run as failed on a network error', async () => {
@@ -155,6 +183,7 @@ describe('startRun', () => {
     await vi.waitFor(() => expect(store().activeRunId).toBeNull());
     expect(lastRun().status).toBe('failed');
     expect(store().streamStatus).toBe('error');
+    expect(store().streamError).toBe('Could not reach the execution endpoint.');
   });
 
   it('treats a stream that closes without done as an interrupted run', async () => {
@@ -172,6 +201,7 @@ describe('startRun', () => {
     expect(stateOf('a')).toBe('failed');
     expect(store().nodes[0]!.data.telemetry.error?.code).toBe('RUN_INTERRUPTED');
     expect(store().streamStatus).toBe('error');
+    expect(store().streamError).toBe('The stream closed before the run finished.');
   });
 
   it('does not let a superseded stream write into the run that replaced it', async () => {
