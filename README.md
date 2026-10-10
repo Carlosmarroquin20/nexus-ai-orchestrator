@@ -19,7 +19,7 @@ application is fully functional with or without credentials.
 
 ## Getting started
 
-Requires **Node.js 20+**.
+Requires **Node.js 20.3+** (the Gemini adapter relies on `AbortSignal.any`).
 
 ```bash
 npm install
