@@ -10,7 +10,7 @@ application is fully functional with or without credentials.
 
 ## Tech stack
 
-- **Framework:** Next.js 14 (App Router)
+- **Framework:** Next.js 16 (App Router, Turbopack) on React 19
 - **Language:** TypeScript (strict: `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, etc.)
 - **Graph engine:** React Flow (`@xyflow/react` v12)
 - **State:** Zustand (slice-based)
@@ -19,7 +19,7 @@ application is fully functional with or without credentials.
 
 ## Getting started
 
-Requires **Node.js 20.3+** (the Gemini adapter relies on `AbortSignal.any`).
+Requires **Node.js 20.9+** (the Next.js 16 minimum).
 
 ```bash
 npm install
@@ -54,7 +54,7 @@ cp .env.example .env.local
 | `npm run dev`        | Start the dev server                     |
 | `npm run build`      | Production build                         |
 | `npm run start`      | Serve the production build               |
-| `npm run lint`       | ESLint (`next lint`)                     |
+| `npm run lint`       | ESLint (flat config, `eslint .`)         |
 | `npm run type-check` | `tsc --noEmit` (strict)                  |
 | `npm test`           | Run the Vitest suite                     |
 | `npm run test:watch` | Vitest in watch mode                     |

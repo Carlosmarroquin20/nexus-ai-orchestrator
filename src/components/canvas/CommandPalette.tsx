@@ -13,7 +13,7 @@ import {
   Search,
   Square,
 } from 'lucide-react';
-import { type JSX, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { type JSX, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { NODE_KIND_ORDER, getNodeDescriptor } from '@/config/nodeRegistry';
@@ -58,21 +58,29 @@ export const CommandPalette = (): JSX.Element => {
 
   const isRunning = activeRun?.status === 'running';
 
+  // The highlighted row is reset by the events that invalidate it (visibility and
+  // query changes) rather than by an effect, which would cost an extra render pass.
+  const changeOpen = useCallback((next: boolean): void => {
+    setOpen(next);
+    setActiveIndex(0);
+  }, []);
+
+  const changeQuery = useCallback((next: string): void => {
+    setQuery(next);
+    setActiveIndex(0);
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setOpen((previous) => !previous);
+        setActiveIndex(0);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
-
-  // Reset transient state whenever the palette opens or the query changes.
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [query, open]);
 
   const items = useMemo<PaletteItem[]>(() => {
     if (!open) return [];
@@ -216,17 +224,16 @@ export const CommandPalette = (): JSX.Element => {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent onKeyDown={onKeyDown}>
         <DialogTitle className="sr-only">Command palette</DialogTitle>
 
         <div className="flex items-center gap-2 border-b border-border px-3">
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          {/* eslint-disable-next-line jsx-a11y/no-autofocus -- expected for a command palette */}
           <input
             autoFocus
             value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
+            onChange={(event) => changeQuery(event.currentTarget.value)}
             placeholder="Search nodes and actions..."
             className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />

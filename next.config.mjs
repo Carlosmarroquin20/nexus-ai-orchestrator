@@ -2,10 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  // Build-time gates are intentionally strict: type and lint errors must fail CI,
-  // never silently ship. Do not relax these to unblock local iteration.
+  // Type errors must fail the build, never silently ship. Do not relax this to
+  // unblock local iteration. Linting is no longer part of `next build` as of
+  // Next.js 16; it runs as its own CI step (`npm run lint`).
   typescript: { ignoreBuildErrors: false },
-  eslint: { ignoreDuringBuilds: false },
   experimental: {
     // Tree-shake large icon/graph barrels to keep the client canvas bundle lean.
     optimizePackageImports: ['lucide-react', '@xyflow/react'],

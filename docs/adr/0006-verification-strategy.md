@@ -14,7 +14,7 @@ serialization) and the store mutations that the UI relies on.
 Adopt a layered verification pyramid, all wired into CI on every push and pull request:
 
 1. **Strict type-check** (`tsc --noEmit`) over the whole project, tests included.
-2. **Lint** (`next lint`).
+2. **Lint** (`eslint .`, flat config; no longer part of `next build` since Next.js 16).
 3. **Example unit tests** for the pure core.
 4. **Property-based tests + fuzzing** (fast-check): assert universal invariants over
    generated inputs (token/error invariants, topological order respects edges,
