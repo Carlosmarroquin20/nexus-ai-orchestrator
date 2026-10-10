@@ -20,8 +20,8 @@ import { useSettingsPersistence } from '@/hooks/useSettingsPersistence';
  * viewport-aware hooks used by overlays — `useGraphManipulation` in the toolbar —
  * share the same flow instance as `GraphCanvas`.
  *
- * The telemetry stream endpoint is environment-provided. When unset, the stream
- * stays idle and the canvas remains fully operable for manual graph authoring.
+ * No stream is opened on mount: a run's execution stream is owned by
+ * `services/runExecutor` and exists only between `startRun` and its completion.
  */
 export default function WorkspacePage(): JSX.Element {
   // Persist the graph to localStorage and rehydrate it on load. Ordering matters:
