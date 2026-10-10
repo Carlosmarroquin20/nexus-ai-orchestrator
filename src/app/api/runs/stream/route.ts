@@ -34,6 +34,7 @@ import { LlmError } from '@/server/llm/types';
 import { resolveLlmProvider } from '@/server/llm/resolveProvider';
 import { isFiniteNumber, isRecord, isString } from '@/utils/guards';
 import { computeExecutionLevels } from '@/utils/graphValidation';
+import { renderTemplate } from '@/utils/promptTemplate';
 import { computeTokenCost } from '@/utils/telemetry';
 import { safeJsonParse } from '@/utils/telemetryEvent';
 
@@ -264,10 +265,7 @@ export async function GET(request: Request): Promise<Response> {
     inputText: string,
   ): Promise<NodeExecutionResult> => {
     if (kind === 'PROMPT_TEMPLATE') {
-      const rendered =
-        params.template !== undefined && params.template.length > 0
-          ? params.template.replace(/\{\{\s*[\w$.]+\s*\}\}/g, inputText)
-          : inputText;
+      const rendered = renderTemplate(params.template ?? '', inputText);
       return { outputText: rendered, inputTokens: 0, outputTokens: 0, latencyMs: 0, costInUSD: 0 };
     }
     if (kind === 'VECTOR_DB') {

@@ -16,6 +16,7 @@ import {
   asNodeId,
 } from '@/types/graph';
 import { detectCycle } from './graphValidation';
+import { extractTemplateVariables } from './promptTemplate';
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info';
 
@@ -33,18 +34,6 @@ const SEVERITY_RANK: Readonly<Record<DiagnosticSeverity, number>> = {
   error: 0,
   warning: 1,
   info: 2,
-};
-
-const TEMPLATE_VARIABLE_PATTERN = /\{\{\s*([\w$.]+)\s*\}\}/g;
-
-/** Extracts the unique `{{ variable }}` references declared inside a template body. */
-export const extractTemplateVariables = (template: string): string[] => {
-  const found = new Set<string>();
-  for (const match of template.matchAll(TEMPLATE_VARIABLE_PATTERN)) {
-    const name = match[1];
-    if (name !== undefined) found.add(name);
-  }
-  return [...found];
 };
 
 /** Shared LLM_CORE binding validation for agents and classifiers. */

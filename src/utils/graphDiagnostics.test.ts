@@ -2,20 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { makeEdge, makeNode } from '@/test/factories';
 import { NODE_KIND } from '@/types/graph';
-import { analyzeGraph, extractTemplateVariables } from '@/utils/graphDiagnostics';
-
-describe('extractTemplateVariables', () => {
-  it('extracts unique interpolation variables', () => {
-    expect(extractTemplateVariables('Hi {{name}}, {{ name }} from {{ place }}').sort()).toEqual([
-      'name',
-      'place',
-    ]);
-  });
-
-  it('returns empty when there are no variables', () => {
-    expect(extractTemplateVariables('no variables here')).toEqual([]);
-  });
-});
+import { analyzeGraph } from '@/utils/graphDiagnostics';
 
 describe('analyzeGraph', () => {
   it('reports nothing for a clean, fully-configured graph', () => {
