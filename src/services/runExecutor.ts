@@ -1,27 +1,41 @@
 /**
  * Run execution controller (client side).
  *
- * Bridges the store's run lifecycle to the server SSE execution stream. Holds a
- * single module-level `EventSource` so a run is a true singleton: starting a new
- * run tears down any prior stream. Exposed as plain functions (not a hook) so any
+ * Bridges the store's run lifecycle to the server execution stream. Holds a single
+ * module-level `AbortController` so a run is a true singleton: starting a new run
+ * tears down any prior stream. Exposed as plain functions (not a hook) so any
  * client component can trigger a run without prop drilling or context.
  *
+ * Transport (ADR 0008): the run request is the JSON body of a POST, and the
+ * response body is read incrementally and decoded as `text/event-stream`.
+ * `EventSource` is not used because it can only issue GET requests, which would
+ * force the graph (prompts included) into the URL.
+ *
  * Flow: `startRun` opens a run in the store (resetting telemetry, minting the
- * runId), encodes the topology into the stream URL, and wires the source to
- * `ingestTelemetryEvent`. The server's `done` event finalizes the run and closes
- * the source; an error finalizes it as failed (EventSource would otherwise
- * auto-reconnect, which is wrong for a one-shot run).
+ * runId), posts the topology, and feeds decoded frames to `ingestTelemetryEvent`.
+ * The server's `done` event finalizes the run. A rejected request, a transport
+ * error, or a stream that closes without `done` finalizes it as failed.
+ *
+ * Staleness: every asynchronous continuation re-checks that its controller is
+ * still the active one before touching the store, so a stream that was stopped or
+ * superseded can never write into the run that replaced it.
  */
 
 import { useGraphStore } from '@/store/useGraphStore';
-import type { ExecutionDescriptor, ExecutionNodeParams, RunOutcome } from '@/types/execution';
+import type {
+  ExecutionDescriptor,
+  ExecutionNodeParams,
+  ExecutionRequest,
+  RunOutcome,
+} from '@/types/execution';
 import { NODE_KIND, type NexusEdge, type NexusNode } from '@/types/graph';
 import { isRecord } from '@/utils/guards';
+import { INITIAL_SSE_STATE, type SseEvent, feedSse } from '@/utils/sseParser';
 import { parseTelemetryEvent, safeJsonParse } from '@/utils/telemetryEvent';
 
 const STREAM_ENDPOINT = '/api/runs/stream';
 
-let activeSource: EventSource | null = null;
+let activeController: AbortController | null = null;
 
 /** Extracts the execution-relevant parameters from a node's variant config. */
 const extractParams = (node: NexusNode): ExecutionNodeParams => {
@@ -56,16 +70,100 @@ const readOutcome = (data: string): RunOutcome => {
   return status === 'failed' || status === 'cancelled' ? status : 'completed';
 };
 
+/** Detaches and aborts the active stream, if any. */
 const teardown = (): void => {
-  if (activeSource !== null) {
-    activeSource.close();
-    activeSource = null;
+  const controller = activeController;
+  // Cleared before aborting so the aborted stream's continuations see themselves
+  // as stale and do not report the abort as a transport failure.
+  activeController = null;
+  controller?.abort();
+};
+
+/**
+ * Applies one decoded frame to the store. Returns `true` once the terminal `done`
+ * event has finalized the run and the stream should no longer be read.
+ */
+const applyEvent = (event: SseEvent): boolean => {
+  const store = useGraphStore.getState();
+  switch (event.event) {
+    case 'mode': {
+      const payload = safeJsonParse(event.data);
+      store.setRunMode(isRecord(payload) && payload['mode'] === 'real' ? 'real' : 'simulated');
+      return false;
+    }
+    case 'done': {
+      store.finalizeRun(readOutcome(event.data));
+      activeController = null;
+      store.setStreamStatus('disconnected');
+      return true;
+    }
+    case 'message': {
+      const telemetry = parseTelemetryEvent(safeJsonParse(event.data));
+      if (telemetry !== null) store.ingestTelemetryEvent(telemetry);
+      return false;
+    }
+    default:
+      return false;
+  }
+};
+
+/** Finalizes the active run as failed after a rejected request or a broken stream. */
+const failRun = (): void => {
+  const store = useGraphStore.getState();
+  store.finalizeRun('failed');
+  activeController = null;
+  store.setStreamStatus('error');
+};
+
+const consumeStream = async (
+  controller: AbortController,
+  request: ExecutionRequest,
+): Promise<void> => {
+  const isCurrent = (): boolean => activeController === controller;
+
+  try {
+    const response = await fetch(STREAM_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(request),
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    if (!isCurrent()) return;
+    if (!response.ok || response.body === null) {
+      failRun();
+      return;
+    }
+    useGraphStore.getState().setStreamStatus('open');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let state = INITIAL_SSE_STATE;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (!isCurrent()) return;
+      if (done) break;
+      const step = feedSse(state, decoder.decode(value, { stream: true }));
+      state = step.state;
+      for (const event of step.events) {
+        if (applyEvent(event)) {
+          void reader.cancel();
+          return;
+        }
+      }
+    }
+    // The body ended without a `done` event: the server went away mid-run.
+    failRun();
+  } catch {
+    // An abort issued by `teardown` has already cleared the controller, so it is
+    // filtered out here; anything else is a genuine transport failure.
+    if (isCurrent()) failRun();
   }
 };
 
 /**
- * Starts a run: resets telemetry, opens the SSE stream for the current graph, and
- * streams telemetry into the store. No-op when the graph is empty.
+ * Starts a run: resets telemetry, posts the current graph to the execution
+ * endpoint, and streams telemetry into the store. No-op when the graph is empty.
  */
 export const startRun = (): void => {
   const store = useGraphStore.getState();
@@ -73,44 +171,16 @@ export const startRun = (): void => {
 
   teardown();
   const runId = store.beginRun();
-  const descriptor = buildDescriptor(store.nodes, store.edges);
-  const params = new URLSearchParams({ runId, graph: JSON.stringify(descriptor) });
-  if (store.failRate > 0) params.set('failRate', String(store.failRate));
+  const request: ExecutionRequest = {
+    runId,
+    graph: buildDescriptor(store.nodes, store.edges),
+    ...(store.failRate > 0 ? { failRate: store.failRate } : {}),
+  };
 
   store.setStreamStatus('connecting');
-  const source = new EventSource(`${STREAM_ENDPOINT}?${params.toString()}`);
-  activeSource = source;
-
-  source.onopen = (): void => useGraphStore.getState().setStreamStatus('open');
-
-  source.addEventListener('mode', (event) => {
-    const payload = safeJsonParse((event as MessageEvent<string>).data);
-    const mode = isRecord(payload) && (payload['mode'] === 'real' || payload['mode'] === 'simulated')
-      ? payload['mode']
-      : 'simulated';
-    useGraphStore.getState().setRunMode(mode);
-  });
-
-  source.onmessage = (message: MessageEvent<string>): void => {
-    const event = parseTelemetryEvent(safeJsonParse(message.data));
-    if (event !== null) useGraphStore.getState().ingestTelemetryEvent(event);
-  };
-
-  source.addEventListener('done', (event) => {
-    const outcome = readOutcome((event as MessageEvent<string>).data);
-    useGraphStore.getState().finalizeRun(outcome);
-    teardown();
-    useGraphStore.getState().setStreamStatus('disconnected');
-  });
-
-  source.onerror = (): void => {
-    // A one-shot run treats any transport error as terminal; closing prevents the
-    // EventSource from auto-reconnecting to a stream that has already ended.
-    if (activeSource === null) return;
-    useGraphStore.getState().finalizeRun('failed');
-    teardown();
-    useGraphStore.getState().setStreamStatus('error');
-  };
+  const controller = new AbortController();
+  activeController = controller;
+  void consumeStream(controller, request);
 };
 
 /** Cancels the active run and closes its stream. Safe to call when idle. */

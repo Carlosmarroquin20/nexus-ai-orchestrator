@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-06-15
+- Amended by: [ADR 0008](0008-post-body-run-request.md) — the run request is a POST body,
+  not a GET query string
 
 ## Context
 
@@ -11,9 +13,9 @@ fully functional with no credentials, and the API key must never reach the brows
 
 ## Decision
 
-A Next.js route handler (`GET /api/runs/stream`) streams `TelemetryEvent` frames over
-Server-Sent Events: one `running` then one `completed`/`failed` per node, a named
-`mode` event up front, and a terminal `done` event.
+A Next.js route handler (`/api/runs/stream`) streams `TelemetryEvent` frames in
+Server-Sent Events framing: one `running` then one `completed`/`failed` per node, a
+named `mode` event up front, and a terminal `done` event.
 
 - **Real mode** (`GEMINI_API_KEY` set): LLM-backed nodes call Gemini server-side; the
   key is read from `process.env` (never `NEXT_PUBLIC_`), sent via the `x-goog-api-key`
@@ -23,16 +25,16 @@ Server-Sent Events: one `running` then one `completed`/`failed` per node, a name
   are executed in topological **levels** (longest-path rank); nodes within a level are
   independent and run concurrently, matching the parallelism the critical-path metric
   assumes. A failed node marks its transitive descendants `skipped`.
-- The graph topology travels in the SSE GET query string.
+- The graph topology travels in the request (originally the GET query string; a POST
+  body since ADR 0008).
 
 ## Consequences
 
 - The app works with or without credentials; the active mode is shown live in the UI.
 - Real runs report genuine token usage, latency, and cost.
-- EventSource is native and simple, and auto-reconnect is avoided via the `done` event.
-- SSE GET cannot carry a body, so the descriptor rides the query string — bounded in
-  size (rejected past a limit). The documented evolution for large graphs is a
-  POST-to-start + GET-by-id handshake; the event contract is unaffected by that change.
+- The original transport was `EventSource`, which cannot carry a body, so the
+  descriptor rode the query string and was bounded by URL limits. ADR 0008 replaces it
+  with a POST body and a `fetch`-read stream; the event contract is unaffected.
 - Serverless platforms may cap stream duration; local development is unaffected.
 - The endpoint is currently unauthenticated — acceptable for local use, documented as a
   prerequisite before public deployment (each run can incur real API cost).

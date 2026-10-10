@@ -1,5 +1,6 @@
 /**
- * Server-sent execution stream: `GET /api/runs/stream?runId=<id>&graph=<json>`.
+ * Server-sent execution stream: `POST /api/runs/stream` with an
+ * `ExecutionRequest` JSON body (ADR 0008).
  *
  * Executes the supplied graph level by level (longest-path rank), running the
  * mutually independent nodes of a level concurrently and streaming a `running`
@@ -14,11 +15,17 @@
  * - Simulated fallback: with no key, deterministic per-kind telemetry is emitted,
  *   so the app remains fully functional without credentials.
  *
- * `failRate` (query, [0,1]) injects faults in either mode to exercise the skip
+ * `failRate` (body, [0,1]) injects faults in either mode to exercise the skip
  * propagation: a failed node's transitive descendants are reported `skipped`.
  *
- * Frames are `TelemetryEvent` JSON on the default `message` channel; the terminal
- * signal uses a named `done` event so the client can close without auto-reconnect.
+ * The response is framed as `text/event-stream`: `TelemetryEvent` JSON on the
+ * default `message` channel, a named `mode` event up front, and a terminal named
+ * `done` event. A stream that closes without `done` means the run was interrupted.
+ *
+ * Only `application/json` bodies are accepted. Besides being the contract, this
+ * keeps the endpoint out of reach of cross-site "simple" requests: a JSON POST
+ * from another origin requires a CORS preflight, which this route never grants,
+ * so a third-party page cannot start a (billable) run in the user's browser.
  */
 
 import {
@@ -29,10 +36,10 @@ import {
   asNodeId,
   asRunId,
 } from '@/types/graph';
-import type { ExecutionDescriptor, ExecutionNodeParams, RunOutcome } from '@/types/execution';
+import type { ExecutionNodeParams, RunOutcome } from '@/types/execution';
 import { LlmError } from '@/server/llm/types';
 import { resolveLlmProvider } from '@/server/llm/resolveProvider';
-import { isFiniteNumber, isRecord, isString } from '@/utils/guards';
+import { type ExecutionRequestRejection, parseExecutionRequest } from '@/utils/executionRequest';
 import { computeExecutionLevels } from '@/utils/graphValidation';
 import { renderTemplate } from '@/utils/promptTemplate';
 import { computeTokenCost } from '@/utils/telemetry';
@@ -51,9 +58,18 @@ const SSE_HEADERS: Readonly<Record<string, string>> = {
 // Seed input handed to source nodes (no predecessors).
 const SEED_INPUT = 'How do I reset my account password?';
 
-// Server-side input guards: reject oversized payloads before doing any work.
-const MAX_GRAPH_PARAM_BYTES = 100_000;
-const MAX_NODES = 200;
+/**
+ * Cap on the request body. Route handlers have no built-in body limit, so it is
+ * enforced here, before any parsing. Sized for the node limit with multi-kilobyte
+ * prompts per node.
+ */
+const MAX_REQUEST_BYTES = 1_000_000;
+
+const REJECTION_STATUS: Readonly<Record<ExecutionRequestRejection, number>> = {
+  MALFORMED: 400,
+  EMPTY_GRAPH: 400,
+  TOO_MANY_NODES: 413,
+};
 
 /** Wall-clock pacing for the simulated fallback (real mode is paced by the API). */
 const RUNNING_PHASE_MS = 420;
@@ -108,51 +124,32 @@ const simulateMetrics = (kind: NexusNodeKind): Omit<NodeExecutionResult, 'output
   }
 };
 
-const NODE_KINDS = new Set<string>([
-  'AGENT',
-  'VECTOR_DB',
-  'PROMPT_TEMPLATE',
-  'CLASSIFIER',
-  'LLM_CORE',
-]);
+/**
+ * Reads the request body as UTF-8 text, or returns `null` as soon as it exceeds
+ * `maxBytes`. The declared `Content-Length` is only a fast path: it may be absent
+ * (chunked upload) or wrong, so the bytes actually received are counted too and
+ * the read is abandoned at the limit instead of buffering an unbounded body.
+ */
+const readBodyCapped = async (request: Request, maxBytes: number): Promise<string | null> => {
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  if (request.body === null) return '';
 
-const parseParams = (raw: unknown): ExecutionNodeParams => {
-  if (!isRecord(raw)) return {};
-  return {
-    ...(isString(raw['systemPrompt']) ? { systemPrompt: raw['systemPrompt'] } : {}),
-    ...(isString(raw['template']) ? { template: raw['template'] } : {}),
-    ...(Array.isArray(raw['labels']) ? { labels: raw['labels'].filter(isString) } : {}),
-    ...(isFiniteNumber(raw['temperature']) ? { temperature: raw['temperature'] } : {}),
-    ...(isFiniteNumber(raw['maxOutputTokens']) ? { maxOutputTokens: raw['maxOutputTokens'] } : {}),
-  };
-};
-
-/** Defensively narrows the query payload into an execution descriptor. */
-const parseDescriptor = (raw: unknown): ExecutionDescriptor | null => {
-  if (!isRecord(raw) || !Array.isArray(raw['nodes']) || !Array.isArray(raw['edges'])) return null;
-
-  const nodes: ExecutionDescriptor['nodes'] = [];
-  for (const candidate of raw['nodes']) {
-    if (!isRecord(candidate) || !isString(candidate['id']) || !isString(candidate['kind'])) {
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let received = 0;
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > maxBytes) {
+      await reader.cancel();
       return null;
     }
-    if (!NODE_KINDS.has(candidate['kind'])) return null;
-    nodes.push({
-      id: candidate['id'],
-      kind: candidate['kind'] as NexusNodeKind,
-      params: parseParams(candidate['params']),
-    });
+    text += decoder.decode(value, { stream: true });
   }
-
-  const edges: ExecutionDescriptor['edges'] = [];
-  for (const candidate of raw['edges']) {
-    if (!isRecord(candidate) || !isString(candidate['source']) || !isString(candidate['target'])) {
-      return null;
-    }
-    edges.push({ source: candidate['source'], target: candidate['target'] });
-  }
-
-  return { nodes, edges };
+  return text + decoder.decode();
 };
 
 const buildEvent = (
@@ -193,31 +190,22 @@ const buildPrompt = (
   return { prompt: inputText };
 };
 
-export async function GET(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-  const runId = url.searchParams.get('runId');
-  const graphParam = url.searchParams.get('graph');
-
-  if (runId === null || graphParam === null) {
-    return new Response('Missing "runId" or "graph" query parameter.', { status: 400 });
-  }
-  if (graphParam.length > MAX_GRAPH_PARAM_BYTES) {
-    return new Response('Graph descriptor exceeds the size limit.', { status: 413 });
+export async function POST(request: Request): Promise<Response> {
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return new Response('Run requests must be sent as application/json.', { status: 415 });
   }
 
-  const descriptor = parseDescriptor(safeJsonParse(graphParam));
-  if (descriptor === null) {
-    return new Response('Malformed graph descriptor.', { status: 400 });
-  }
-  if (descriptor.nodes.length === 0) {
-    return new Response('Graph has no nodes to execute.', { status: 400 });
-  }
-  if (descriptor.nodes.length > MAX_NODES) {
-    return new Response(`Graph exceeds the ${MAX_NODES}-node execution limit.`, { status: 413 });
+  const body = await readBodyCapped(request, MAX_REQUEST_BYTES);
+  if (body === null) {
+    return new Response('Run request exceeds the size limit.', { status: 413 });
   }
 
-  const failRateParam = Number(url.searchParams.get('failRate'));
-  const failRate = isFiniteNumber(failRateParam) ? Math.min(Math.max(failRateParam, 0), 1) : 0;
+  const parsed = parseExecutionRequest(safeJsonParse(body));
+  if (!parsed.ok) {
+    return new Response(parsed.error, { status: REJECTION_STATUS[parsed.code] });
+  }
+  const { runId, graph: descriptor, failRate } = parsed.request;
 
   // Resolve the LLM provider from the server env (port/adapter). Absent provider
   // -> simulated fallback. Credentials live in the adapter, never client-exposed.

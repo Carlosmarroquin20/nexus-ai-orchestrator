@@ -106,10 +106,12 @@ diagnostics, and (de)serialization. Run `npm test`.
 
 ### Execution backend
 
-`GET /api/runs/stream` is a Server-Sent Events endpoint that sequences the graph in
-topological levels — nodes within a level are independent and run concurrently — and
-streams `TelemetryEvent` frames (one `running`, then `completed` or `failed`, per node)
-plus a terminal `done` event.
+`POST /api/runs/stream` takes the graph as a JSON body and answers with a stream in
+Server-Sent Events framing. It sequences the graph in topological levels — nodes within
+a level are independent and run concurrently — and emits `TelemetryEvent` frames (one
+`running`, then `completed` or `failed`, per node) plus a terminal `done` event. The
+client reads the stream with `fetch`, so prompts never travel in a URL
+([ADR 0008](docs/adr/0008-post-body-run-request.md)).
 
 - **Real mode** (`GEMINI_API_KEY` set): LLM-backed nodes (`AGENT`, `LLM_CORE`, `CLASSIFIER`)
   call Gemini and report real latency, token usage, and output. Requests are retried with
@@ -156,8 +158,8 @@ Shortcuts are suppressed while typing in a field.
   **estimates**; reconcile them with the provider's rate card before relying on them.
 - A node's configured `provider`/`model` is currently informational — real execution uses
   the server-side `GEMINI_MODEL`.
-- The graph descriptor travels in the SSE URL query string; very large graphs/prompts would
-  exceed URL limits. The intended evolution is a POST-to-start + GET-by-id handshake.
+- A run request is capped at 1 MB and 200 nodes; larger requests are rejected with `413`.
 - SSE on serverless platforms may hit request-duration limits; local `npm run dev` is unaffected.
 - The execution endpoint is unauthenticated; add a gate before exposing it publicly, since
-  each run can incur real API cost.
+  each run can incur real API cost. Requiring a JSON POST keeps third-party web pages from
+  starting runs in the user's browser, but it is not a substitute for authentication.
