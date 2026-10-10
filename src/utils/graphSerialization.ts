@@ -19,13 +19,13 @@
 import { NEXUS_EDGE_TYPE } from '@/config/nodeRegistry';
 import { createPristineTelemetry } from '@/config/telemetry';
 import {
-  NODE_KIND,
   type DataTransformKind,
   type GraphEdgeData,
   type NexusEdge,
   type NexusNode,
   type NexusNodeConfig,
   type NexusNodeKind,
+  isNodeKind,
 } from '@/types/graph';
 
 import { isFiniteNumber, isRecord, isString } from './guards';
@@ -69,7 +69,6 @@ export type GraphParseResult =
   | { readonly ok: true; readonly snapshot: GraphSnapshot }
   | { readonly ok: false; readonly error: string };
 
-const NODE_KINDS = new Set<string>(Object.values(NODE_KIND));
 const TRANSFORM_KINDS = new Set<string>([
   'passthrough',
   'map',
@@ -78,9 +77,6 @@ const TRANSFORM_KINDS = new Set<string>([
   'embed',
   'rerank',
 ]);
-
-const isNodeKind = (value: unknown): value is NexusNodeKind =>
-  typeof value === 'string' && NODE_KINDS.has(value);
 
 /* ------------------------------- serialize ------------------------------- */
 

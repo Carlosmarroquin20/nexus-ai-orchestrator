@@ -62,6 +62,12 @@ export const NODE_KIND = {
 
 export type NexusNodeKind = (typeof NODE_KIND)[keyof typeof NODE_KIND];
 
+const NODE_KIND_VALUES: ReadonlySet<string> = new Set(Object.values(NODE_KIND));
+
+/** Runtime guard for untrusted input (persisted snapshots, wire payloads). */
+export const isNodeKind = (value: unknown): value is NexusNodeKind =>
+  typeof value === 'string' && NODE_KIND_VALUES.has(value);
+
 /* -------------------------------------------------------------------------- */
 /* Execution telemetry                                                        */
 /* -------------------------------------------------------------------------- */
