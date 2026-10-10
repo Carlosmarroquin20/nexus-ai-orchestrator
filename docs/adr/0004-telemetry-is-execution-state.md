@@ -12,9 +12,12 @@ resurrect a stale `running` state on reload.
 
 ## Decision
 
-- The graph snapshot (localStorage auto-save and JSON import/export) **strips telemetry
-  to pristine** on serialize and rehydrates it to pristine on load. Telemetry is never
-  part of the persisted document.
+- The graph snapshot (localStorage auto-save and JSON import/export) is a canonical
+  projection of the authored document: it **omits telemetry** (and React Flow runtime
+  fields such as selection and measured dimensions) on serialize and rehydrates
+  telemetry to pristine on load. Telemetry is never part of the persisted document.
+- Undo/redo restores structure only and re-bases the live telemetry onto it, so history
+  never time-travels execution state.
 - Workspace settings (e.g. `failRate`) persist under a **separate versioned storage key**,
   never inside the graph document, so a shared pipeline never carries debugging knobs.
 - Run records snapshot telemetry **immutably** at capture time and the history is capped,

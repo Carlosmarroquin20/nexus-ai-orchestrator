@@ -7,6 +7,7 @@ import { stopRun } from '@/services/runExecutor';
 import { useGraphStore } from '@/store/useGraphStore';
 import type { PipelineRun } from '@/types/graph';
 import { runToOtlpTrace } from '@/utils/otelExport';
+import { isSameGraphStructure } from '@/utils/graphStructure';
 import {
   GRAPH_STORAGE_KEY,
   type GraphParseResult,
@@ -23,7 +24,12 @@ const writeStorage = (value: string): void => writeLocalStorage(GRAPH_STORAGE_KE
 
 /**
  * Owns the localStorage persistence lifecycle. Call EXACTLY ONCE at the workspace
- * root: it hydrates the graph on mount and then debounce-writes topology changes.
+ * root: it hydrates the graph on mount and then debounce-writes document changes.
+ *
+ * Writes are gated on a structural comparison, not on array identity: the node
+ * array is replaced on every telemetry tick and selection toggle, none of which
+ * changes the serialized document. A pending write is flushed on `pagehide` and
+ * on unmount, so an edit made within the debounce window survives closing the tab.
  *
  * SSR-safe by construction — the effect runs client-only, so `window` is never
  * touched during server render, avoiding hydration mismatches (the server always
@@ -40,19 +46,25 @@ export const useGraphAutoPersist = (): void => {
     }
 
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = (): void => {
+      if (timer === null) return;
+      clearTimeout(timer);
+      timer = null;
+      const { nodes, edges } = useGraphStore.getState();
+      writeStorage(serializeGraph(nodes, edges));
+    };
+
     const unsubscribe = useGraphStore.subscribe((state, previous) => {
-      // Persist only on topology changes; telemetry deltas during a run must not
-      // thrash storage (and are never serialized anyway).
-      if (state.nodes === previous.nodes && state.edges === previous.edges) return;
+      if (isSameGraphStructure(previous, state)) return;
       if (timer !== null) clearTimeout(timer);
-      timer = setTimeout(() => {
-        writeStorage(serializeGraph(state.nodes, state.edges));
-      }, SAVE_DEBOUNCE_MS);
+      timer = setTimeout(flush, SAVE_DEBOUNCE_MS);
     });
+    window.addEventListener('pagehide', flush);
 
     return () => {
-      if (timer !== null) clearTimeout(timer);
+      window.removeEventListener('pagehide', flush);
       unsubscribe();
+      flush();
     };
   }, []);
 };

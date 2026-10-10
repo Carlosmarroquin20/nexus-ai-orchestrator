@@ -2,8 +2,12 @@
  * Pure (de)serialization for graph snapshots — the persistence/transfer format.
  *
  * Invariants:
+ * - A snapshot is a canonical projection of the authored document: only the
+ *   fields listed in `PersistedNode` / `PersistedEdge` are written. React Flow
+ *   runtime fields (`selected`, `dragging`, `measured`, ...) never reach the file,
+ *   so serializing the same document twice yields identical bytes.
  * - Telemetry is NEVER persisted. It is execution state, not topology; snapshots
- *   strip it on write and rehydrate it to pristine on read. A reload must never
+ *   omit it on write and rehydrate it to pristine on read. A reload must never
  *   resurrect a stale `running` state or fabricated latency.
  * - Every snapshot carries a `version`. Parsing rejects unknown versions rather
  *   than guessing, leaving room for an explicit migration step later.
@@ -20,6 +24,7 @@ import {
   type GraphEdgeData,
   type NexusEdge,
   type NexusNode,
+  type NexusNodeConfig,
   type NexusNodeKind,
 } from '@/types/graph';
 
@@ -33,8 +38,31 @@ export interface GraphSnapshot {
   readonly edges: NexusEdge[];
 }
 
-interface GraphEnvelope extends GraphSnapshot {
+interface PersistedNode {
+  readonly id: string;
+  readonly type: NexusNodeKind;
+  readonly position: { readonly x: number; readonly y: number };
+  readonly data: {
+    readonly kind: NexusNodeKind;
+    readonly label: string;
+    readonly description?: string;
+    readonly config: NexusNodeConfig;
+  };
+}
+
+interface PersistedEdge {
+  readonly id: string;
+  readonly source: string;
+  readonly target: string;
+  readonly sourceHandle: string | null;
+  readonly targetHandle: string | null;
+  readonly data?: GraphEdgeData;
+}
+
+interface GraphEnvelope {
   readonly version: typeof GRAPH_SCHEMA_VERSION;
+  readonly nodes: PersistedNode[];
+  readonly edges: PersistedEdge[];
 }
 
 export type GraphParseResult =
@@ -56,8 +84,28 @@ const isNodeKind = (value: unknown): value is NexusNodeKind =>
 
 /* ------------------------------- serialize ------------------------------- */
 
-const stripTelemetry = (node: NexusNode): NexusNode =>
-  ({ ...node, data: { ...node.data, telemetry: createPristineTelemetry() } }) as NexusNode;
+// `type` is written from `data.kind`: the two are equal by store invariant, and
+// the discriminant is the statically-typed one.
+const toPersistedNode = (node: NexusNode): PersistedNode => ({
+  id: node.id,
+  type: node.data.kind,
+  position: { x: node.position.x, y: node.position.y },
+  data: {
+    kind: node.data.kind,
+    label: node.data.label,
+    ...(node.data.description !== undefined ? { description: node.data.description } : {}),
+    config: node.data.config,
+  },
+});
+
+const toPersistedEdge = (edge: NexusEdge): PersistedEdge => ({
+  id: edge.id,
+  source: edge.source,
+  target: edge.target,
+  sourceHandle: edge.sourceHandle ?? null,
+  targetHandle: edge.targetHandle ?? null,
+  ...(edge.data !== undefined ? { data: edge.data } : {}),
+});
 
 export const serializeGraph = (
   nodes: readonly NexusNode[],
@@ -65,8 +113,8 @@ export const serializeGraph = (
 ): string => {
   const envelope: GraphEnvelope = {
     version: GRAPH_SCHEMA_VERSION,
-    nodes: nodes.map(stripTelemetry),
-    edges: [...edges],
+    nodes: nodes.map(toPersistedNode),
+    edges: edges.map(toPersistedEdge),
   };
   return JSON.stringify(envelope, null, 2);
 };
@@ -87,6 +135,7 @@ const parseNode = (raw: unknown): NexusNode | null => {
   if (!isString(id) || !isNodeKind(type) || position === null || !isRecord(data)) return null;
 
   const label = data['label'];
+  const description = data['description'];
   const config = data['config'];
   // The data discriminant must agree with the React Flow node type, and config
   // must be an object. Field-level config validation is intentionally trusted
@@ -97,7 +146,13 @@ const parseNode = (raw: unknown): NexusNode | null => {
     id,
     type,
     position,
-    data: { kind: type, label, config, telemetry: createPristineTelemetry() },
+    data: {
+      kind: type,
+      label,
+      ...(isString(description) ? { description } : {}),
+      config,
+      telemetry: createPristineTelemetry(),
+    },
   } as unknown as NexusNode;
 };
 
