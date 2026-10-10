@@ -244,6 +244,50 @@ describe('history: undo / redo', () => {
     expect(store().nodes).toHaveLength(2);
   });
 
+  it('undo and redo keep live telemetry instead of the snapshot telemetry', () => {
+    store().loadGraph([makeNode({ id: 'a', position: { x: 0, y: 0 } })], []);
+    // The recorder's baseline predates the run, so its nodes carry idle telemetry.
+    const preRun = { nodes: store().nodes, edges: store().edges };
+    store().updateNodeTelemetry(asNodeId('a'), 'completed', { latencyMs: 200, inputTokens: 10 });
+    store().recordSnapshot(preRun);
+    store().applyLayout(new Map([['a', { x: 100, y: 0 }]]));
+
+    store().applyUndo();
+    const undone = store().nodes[0]!;
+    expect(undone.position).toEqual({ x: 0, y: 0 });
+    expect(undone.data.telemetry.state).toBe('completed');
+    expect(undone.data.telemetry.latencyMs).toBe(200);
+
+    // A later telemetry change must likewise survive the redo.
+    store().updateNodeTelemetry(asNodeId('a'), 'failed', {});
+    store().applyRedo();
+    const redone = store().nodes[0]!;
+    expect(redone.position).toEqual({ x: 100, y: 0 });
+    expect(redone.data.telemetry.state).toBe('failed');
+  });
+
+  it('undo preserves node identity when telemetry is unchanged', () => {
+    store().loadGraph([makeNode({ id: 'a' }), makeNode({ id: 'b' })], []);
+    const snapshot = { nodes: store().nodes, edges: store().edges };
+    store().recordSnapshot(snapshot);
+    store().applyLayout(new Map([['a', { x: 100, y: 0 }]]));
+
+    store().applyUndo();
+    expect(store().nodes[0]).toBe(snapshot.nodes[0]);
+    expect(store().nodes[1]).toBe(snapshot.nodes[1]);
+  });
+
+  it('undo restores a deleted node with pristine telemetry', () => {
+    store().loadGraph([makeNode({ id: 'a', state: 'running' }), makeNode({ id: 'b' })], []);
+    store().recordSnapshot({ nodes: store().nodes, edges: store().edges });
+    store().removeNode(asNodeId('a'));
+
+    store().applyUndo();
+    const restored = store().nodes.find((n) => n.id === 'a')!;
+    expect(restored.data.telemetry.state).toBe('idle');
+    expect(restored.data.telemetry.lastUpdatedAt).toBeNull();
+  });
+
   it('applyUndo is a no-op with an empty past', () => {
     store().addNode(NODE_KIND.LLM_CORE, { x: 0, y: 0 });
     store().applyUndo();

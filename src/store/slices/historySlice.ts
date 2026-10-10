@@ -10,10 +10,18 @@
  * recorder hook; this slice only manages the stacks and applies time-travel.
  * `historyApplying` is the handshake: undo/redo set it so the recorder ignores
  * the resulting change instead of recording it as a fresh edit.
+ *
+ * Telemetry is execution state, not document state (ADR 0004), so it is never
+ * time-travelled. A captured node reference also captures whatever telemetry the
+ * node held at capture time, which may predate a run or have been taken mid-run;
+ * restoring it verbatim would erase a finished run's results or resurrect a
+ * `running` state that no stream will ever settle. Undo/redo therefore restore
+ * structure only and re-base the live telemetry onto it (`withLiveTelemetry`).
  */
 
 import { type StateCreator } from 'zustand';
 
+import { createPristineTelemetry } from '@/config/telemetry';
 import type { NexusEdge, NexusNode } from '@/types/graph';
 
 import type { GraphStore } from '../useGraphStore';
@@ -45,6 +53,26 @@ type HistorySliceCreator = StateCreator<
   HistorySlice
 >;
 
+/**
+ * Projects the live telemetry onto a restored node array. A node present in the
+ * live graph keeps its current telemetry; a node the restore brings back (it was
+ * deleted since the snapshot) has no live execution state and starts pristine.
+ * Node identity is preserved whenever the telemetry reference is already current,
+ * so restoring across a telemetry-free interval re-renders nothing extra.
+ */
+const withLiveTelemetry = (
+  restored: readonly NexusNode[],
+  live: readonly NexusNode[],
+): NexusNode[] => {
+  const liveTelemetry = new Map(live.map((node) => [node.id, node.data.telemetry]));
+  return restored.map((node) => {
+    const telemetry = liveTelemetry.get(node.id) ?? createPristineTelemetry();
+    return telemetry === node.data.telemetry
+      ? node
+      : ({ ...node, data: { ...node.data, telemetry } } as NexusNode);
+  });
+};
+
 export const createHistorySlice: HistorySliceCreator = (set, get) => ({
   past: [],
   future: [],
@@ -66,7 +94,7 @@ export const createHistorySlice: HistorySliceCreator = (set, get) => ({
         past: store.past.slice(0, -1),
         future: [...store.future, { nodes, edges }],
         historyApplying: true,
-        nodes: previous.nodes,
+        nodes: withLiveTelemetry(previous.nodes, nodes),
         edges: previous.edges,
         selectedNodeId: null,
       }),
@@ -84,7 +112,7 @@ export const createHistorySlice: HistorySliceCreator = (set, get) => ({
         future: store.future.slice(0, -1),
         past: [...store.past, { nodes, edges }],
         historyApplying: true,
-        nodes: next.nodes,
+        nodes: withLiveTelemetry(next.nodes, nodes),
         edges: next.edges,
         selectedNodeId: null,
       }),
