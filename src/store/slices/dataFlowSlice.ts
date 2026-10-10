@@ -20,6 +20,7 @@ import {
   type PipelineRun,
   type PipelineRunStatus,
   type RunId,
+  type TelemetryError,
   type TelemetryEvent,
 } from '@/types/graph';
 import type { ExecutionMode } from '@/types/execution';
@@ -46,7 +47,9 @@ export interface DataFlowSlice {
 
   /**
    * Resets all node telemetry, opens a new run in the `running` state, and marks
-   * it active. Returns the new run id so callers can correlate the stream.
+   * it active. A run that is still active is finalized as `cancelled` first, so a
+   * superseded run can never be left `running` in the history. Returns the new
+   * run id so callers can correlate the stream.
    */
   readonly beginRun: () => RunId;
   /**
@@ -55,6 +58,11 @@ export interface DataFlowSlice {
    * against late-arriving frames from a superseded run.
    */
   readonly ingestTelemetryEvent: (event: TelemetryEvent) => void;
+  /**
+   * Closes the active run. Nodes still `running` are settled first, since no
+   * further frame will arrive for them: a cancelled run returns them to `idle`,
+   * any other outcome marks them `failed` with a `RUN_INTERRUPTED` error.
+   */
   readonly finalizeRun: (status: TerminalRunStatus) => void;
   readonly cancelRun: () => void;
   /** Clears recorded runs, retaining only the active run (if any). */
@@ -77,6 +85,13 @@ type DataFlowSliceCreator = StateCreator<
 /** Cap on retained runs; older runs are evicted on the next `beginRun`. */
 const MAX_RUN_HISTORY = 25;
 
+/** Attached to a node that was still in flight when its run terminated. */
+const RUN_INTERRUPTED: TelemetryError = {
+  code: 'RUN_INTERRUPTED',
+  message: 'The run ended before this node reported a result.',
+  originNodeId: null,
+};
+
 const snapshotTelemetry = (
   nodes: readonly NexusNode[],
 ): Readonly<Record<NodeId, NodeTelemetry>> => {
@@ -98,6 +113,7 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
   runMode: null,
 
   beginRun: () => {
+    if (get().activeRunId !== null) get().finalizeRun('cancelled');
     get().resetTelemetry();
     const runId = asRunId(`run_${crypto.randomUUID()}`);
     const nodes = get().nodes;
@@ -153,6 +169,15 @@ export const createDataFlowSlice: DataFlowSliceCreator = (set, get) => ({
   finalizeRun: (status) => {
     const activeRunId = get().activeRunId;
     if (activeRunId === null) return;
+
+    // The stream is gone, so an in-flight node would otherwise stay `running`
+    // indefinitely on the canvas and in the recorded run.
+    for (const node of get().nodes) {
+      if (node.data.telemetry.state !== 'running') continue;
+      if (status === 'cancelled') get().updateNodeTelemetry(asNodeId(node.id), 'idle', {});
+      else get().updateNodeTelemetry(asNodeId(node.id), 'failed', { error: RUN_INTERRUPTED });
+    }
+
     const nodes = get().nodes;
     const metrics = computeRunMetrics(nodes, get().edges);
     const telemetryByNode = snapshotTelemetry(nodes);

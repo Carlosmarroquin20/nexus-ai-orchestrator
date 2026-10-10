@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from 'react';
 
 import { createDemoPipeline } from '@/config/demoPipeline';
+import { stopRun } from '@/services/runExecutor';
 import { useGraphStore } from '@/store/useGraphStore';
 import type { PipelineRun } from '@/types/graph';
 import { runToOtlpTrace } from '@/utils/otelExport';
@@ -84,6 +85,10 @@ export interface GraphTransferApi {
  * User-triggered graph transfer (export / import / clear). Stateless and
  * effect-free, so it may be called from any component without lifecycle concerns;
  * the returned API has a stable identity.
+ *
+ * Every operation that replaces the graph stops the active run first: a stream
+ * left open would keep billing the backend for a pipeline that no longer exists
+ * and would finalize its run record against the replacement graph's nodes.
  */
 export const useGraphTransfer = (): GraphTransferApi =>
   useMemo(
@@ -97,12 +102,14 @@ export const useGraphTransfer = (): GraphTransferApi =>
         const text = await file.text();
         const result = parseGraph(safeJsonParse(text));
         if (result.ok) {
+          stopRun();
           useGraphStore.getState().loadGraph(result.snapshot.nodes, result.snapshot.edges);
         }
         return result;
       },
       loadDemo: () => {
         const { nodes, edges } = createDemoPipeline();
+        stopRun();
         useGraphStore.getState().loadGraph(nodes, edges);
       },
       exportRunTrace: (run) => {
@@ -114,7 +121,10 @@ export const useGraphTransfer = (): GraphTransferApi =>
         const stamp = new Date(run.startedAt).toISOString().replace(/[:.]/g, '-');
         downloadJson(JSON.stringify(runToOtlpTrace(run, info), null, 2), `nexus-trace-${stamp}.json`);
       },
-      clearGraph: () => useGraphStore.getState().clearGraph(),
+      clearGraph: () => {
+        stopRun();
+        useGraphStore.getState().clearGraph();
+      },
     }),
     [],
   );

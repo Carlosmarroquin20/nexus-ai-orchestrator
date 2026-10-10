@@ -210,6 +210,60 @@ describe('dataFlow: run lifecycle', () => {
     expect(run.finishedAt).not.toBeNull();
   });
 
+  it('cancelRun returns in-flight nodes to idle and keeps settled results', () => {
+    store().loadGraph([makeNode({ id: 'a' }), makeNode({ id: 'b' })], []);
+    const runId = store().beginRun();
+    const emit = (nodeId: string, state: 'running' | 'completed'): void =>
+      store().ingestTelemetryEvent({
+        runId,
+        nodeId: asNodeId(nodeId),
+        state,
+        emittedAt: Date.now(),
+        patch: state === 'completed' ? { latencyMs: 120 } : {},
+      });
+    emit('a', 'completed');
+    emit('b', 'running');
+
+    store().cancelRun();
+
+    const stateOf = (id: string) => store().nodes.find((n) => n.id === id)!.data.telemetry.state;
+    expect(stateOf('a')).toBe('completed');
+    expect(stateOf('b')).toBe('idle');
+    const run = store().runsById[runId]!;
+    expect(run.status).toBe('cancelled');
+    expect(run.telemetryByNode[asNodeId('b')]!.state).toBe('idle');
+  });
+
+  it('finalizing a run as failed marks in-flight nodes as interrupted', () => {
+    store().loadGraph([makeNode({ id: 'a' })], []);
+    const runId = store().beginRun();
+    store().ingestTelemetryEvent({
+      runId,
+      nodeId: asNodeId('a'),
+      state: 'running',
+      emittedAt: Date.now(),
+      patch: {},
+    });
+
+    store().finalizeRun('failed');
+
+    const telemetry = store().nodes[0]!.data.telemetry;
+    expect(telemetry.state).toBe('failed');
+    expect(telemetry.error?.code).toBe('RUN_INTERRUPTED');
+    expect(store().runsById[runId]!.metrics.failedNodeCount).toBe(1);
+  });
+
+  it('beginRun finalizes a still-active run as cancelled', () => {
+    store().loadGraph([makeNode({ id: 'a' })], []);
+    const first = store().beginRun();
+    const second = store().beginRun();
+
+    expect(store().activeRunId).toBe(second);
+    expect(store().runsById[first]!.status).toBe('cancelled');
+    expect(store().runsById[first]!.finishedAt).not.toBeNull();
+    expect(store().runsById[second]!.status).toBe('running');
+  });
+
   it('caps the run history and retains the active run when cleared', () => {
     for (let i = 0; i < 30; i += 1) {
       store().beginRun();
