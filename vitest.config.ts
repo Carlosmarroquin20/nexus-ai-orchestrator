@@ -25,7 +25,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['src/{utils,store,services,server,config,types}/**', 'src/app/api/**'],
+      include: ['src/{utils,store,services,server,config,types}/**', 'src/app/api/**', 'src/proxy.ts'],
       exclude: ['src/**/*.test.ts'],
       reporter: ['text-summary', 'html'],
       thresholds: {

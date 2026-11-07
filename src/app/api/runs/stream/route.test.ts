@@ -62,6 +62,15 @@ afterEach(() => {
 });
 
 describe('POST /api/runs/stream: request validation', () => {
+  it('refuses an unauthenticated request when the access gate is enabled', async () => {
+    vi.stubEnv('NEXUS_AUTH_USER', 'ada');
+    vi.stubEnv('NEXUS_AUTH_PASSWORD', 'secret');
+    expect((await post(graphBody())).status).toBe(401);
+    const authorized = await post(graphBody(), { Authorization: `Basic ${btoa('ada:secret')}` });
+    expect(authorized.status).toBe(200);
+    await readEvents(authorized);
+  });
+
   it('exposes no GET handler, so the graph can never travel in a URL', () => {
     expect('GET' in route).toBe(false);
   });

@@ -40,6 +40,7 @@ import {
 } from '@/types/graph';
 import { SIMULATED_PRICING } from '@/config/telemetry';
 import type { ExecutionNodeParams, RunOutcome } from '@/types/execution';
+import { enforceAccess } from '@/server/accessGate';
 import { LlmError } from '@/server/llm/types';
 import { resolveLlmProvider } from '@/server/llm/resolveProvider';
 import { forEachWithConcurrency } from '@/utils/concurrency';
@@ -214,6 +215,11 @@ const buildPrompt = (
 };
 
 export async function POST(request: Request): Promise<Response> {
+  // Re-checked here although the proxy also gates this path: a run can incur
+  // real model cost, so it must not depend on the proxy matcher alone.
+  const refusal = enforceAccess(request);
+  if (refusal !== null) return refusal;
+
   const contentType = request.headers.get('content-type') ?? '';
   if (!contentType.toLowerCase().includes('application/json')) {
     return new Response('Run requests must be sent as application/json.', { status: 415 });

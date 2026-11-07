@@ -37,15 +37,22 @@ Real execution uses the Google AI Studio (Gemini) API. Copy the template and fil
 cp .env.example .env.local
 ```
 
-| Variable          | Required | Description                                                                 |
-| ----------------- | -------- | --------------------------------------------------------------------------- |
-| `GEMINI_API_KEY`  | No       | Google AI Studio key. When unset, execution falls back to the simulator.    |
-| `GEMINI_MODEL`    | No       | Override the Gemini model (default `gemini-2.0-flash`).                      |
+| Variable              | Required | Description                                                              |
+| --------------------- | -------- | ------------------------------------------------------------------------ |
+| `GEMINI_API_KEY`      | No       | Google AI Studio key. When unset, execution falls back to the simulator. |
+| `GEMINI_MODEL`        | No       | Override the Gemini model (default `gemini-2.0-flash`).                  |
+| `NEXUS_AUTH_USER`     | No       | With `NEXUS_AUTH_PASSWORD`, enables the HTTP Basic access gate.          |
+| `NEXUS_AUTH_PASSWORD` | No       | With `NEXUS_AUTH_USER`, enables the HTTP Basic access gate.              |
 
 > **Security.** `GEMINI_API_KEY` is read **server-side only** (`process.env`) and is never
 > prefixed with `NEXT_PUBLIC_`, so it is never shipped to the browser bundle. It is sent to
 > Google via the `x-goog-api-key` header (not the URL) and is never logged. `.env.local` is
 > gitignored; only the empty `.env.example` template is committed. **Never commit real keys.**
+
+> **Access gate.** With both `NEXUS_AUTH_USER` and `NEXUS_AUTH_PASSWORD` set, every page and
+> API request requires those HTTP Basic credentials; the browser prompts once. Setting only
+> one of them refuses every request. Serve the app over HTTPS when the gate is enabled
+> ([ADR 0009](docs/adr/0009-opt-in-basic-access-gate.md)).
 
 ## Scripts
 
@@ -162,6 +169,6 @@ Shortcuts are suppressed while typing in a field.
   execution uses the server-side `GEMINI_MODEL`.
 - A run request is capped at 1 MB and 200 nodes; larger requests are rejected with `413`.
 - SSE on serverless platforms may hit request-duration limits; local `npm run dev` is unaffected.
-- The execution endpoint is unauthenticated; add a gate before exposing it publicly, since
-  each run can incur real API cost. Requiring a JSON POST keeps third-party web pages from
-  starting runs in the user's browser, but it is not a substitute for authentication.
+- Each run can incur real API cost. Before exposing the app publicly, enable the access gate
+  (`NEXUS_AUTH_USER` / `NEXUS_AUTH_PASSWORD`) and serve it over HTTPS. The gate is a single
+  shared credential, not a user system.

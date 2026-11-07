@@ -15,3 +15,4 @@ alternatives weighed), so the reasoning behind the codebase is explicit and revi
 | [0006](0006-verification-strategy.md)                    | Verification strategy independent of manual QA                 | Accepted |
 | [0007](0007-llm-provider-port-adapter.md)                | LLM execution behind a provider port (ports & adapters)        | Accepted |
 | [0008](0008-post-body-run-request.md)                    | Run requests travel as a POST body with a streamed response    | Accepted |
+| [0009](0009-opt-in-basic-access-gate.md)                 | Opt-in HTTP Basic access gate                                  | Accepted |

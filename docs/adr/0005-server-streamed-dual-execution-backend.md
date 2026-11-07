@@ -37,8 +37,9 @@ named `mode` event up front, and a terminal `done` event.
   descriptor rode the query string and was bounded by URL limits. ADR 0008 replaces it
   with a POST body and a `fetch`-read stream; the event contract is unaffected.
 - Serverless platforms may cap stream duration; local development is unaffected.
-- The endpoint is currently unauthenticated — acceptable for local use, documented as a
-  prerequisite before public deployment (each run can incur real API cost).
+- The endpoint was originally unauthenticated — acceptable for local use, documented as a
+  prerequisite before public deployment (each run can incur real API cost). ADR 0009 adds
+  an opt-in access gate for that purpose.
 
 ## Alternatives considered
 

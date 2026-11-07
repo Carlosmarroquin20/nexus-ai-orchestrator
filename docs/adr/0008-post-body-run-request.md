@@ -45,8 +45,8 @@ terminal `done`).
   limit, and prompts no longer appear in URLs or access logs.
 - A cross-origin JSON POST requires a CORS preflight, which the route never grants, so a
   third-party page can no longer start a run from the user's browser. This is **not**
-  authentication: same-origin and non-browser callers are still unauthenticated, and the
-  prerequisite recorded in ADR 0005 for public deployment stands.
+  authentication: same-origin and non-browser callers are not authenticated by it. ADR
+  0009 provides the opt-in gate that ADR 0005 required before public deployment.
 - A rejected request now reaches the client as an HTTP status with a reason, rather than
   an opaque `EventSource` error.
 - The event contract, the store, and the execution engine are unchanged.
