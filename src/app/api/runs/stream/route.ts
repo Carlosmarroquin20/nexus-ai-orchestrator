@@ -21,6 +21,8 @@
  * The response is framed as `text/event-stream`: `TelemetryEvent` JSON on the
  * default `message` channel, a named `mode` event up front, and a terminal named
  * `done` event. A stream that closes without `done` means the run was interrupted.
+ * A `: keep-alive` comment line is interleaved periodically so intermediaries do
+ * not drop a stream that is waiting on a slow model call.
  *
  * Only `application/json` bodies are accepted. Besides being the contract, this
  * keeps the endpoint out of reach of cross-site "simple" requests: a JSON POST
@@ -80,6 +82,14 @@ const REJECTION_STATUS: Readonly<Record<ExecutionRequestRejection, number>> = {
   EMPTY_GRAPH: 400,
   TOO_MANY_NODES: 413,
 };
+
+/**
+ * Interval of the keep-alive comment frame. A model call can leave the stream
+ * silent for up to its 30 s timeout per attempt, and proxies and load balancers
+ * commonly drop connections idle for 30-60 s. Comment lines are ignored by the
+ * client decoder, so the frame carries no meaning beyond keeping bytes flowing.
+ */
+const HEARTBEAT_INTERVAL_MS = 15_000;
 
 /** Wall-clock pacing for the simulated fallback (real mode is paced by the API). */
 const RUNNING_PHASE_MS = 420;
@@ -331,6 +341,7 @@ export async function POST(request: Request): Promise<Response> {
 
       // Announce the execution mode up front so the client can label the run live.
       enqueue(`event: mode\ndata: ${JSON.stringify({ mode: realMode ? 'real' : 'simulated' })}\n\n`);
+      const heartbeat = setInterval(() => enqueue(': keep-alive\n\n'), HEARTBEAT_INTERVAL_MS);
 
       let outcome: RunOutcome = 'completed';
       const skipped = new Set<string>();
@@ -405,6 +416,7 @@ export async function POST(request: Request): Promise<Response> {
 
       if (!isAborted()) sendDone(outcome);
 
+      clearInterval(heartbeat);
       request.signal.removeEventListener('abort', abortRun);
       try {
         controller.close();

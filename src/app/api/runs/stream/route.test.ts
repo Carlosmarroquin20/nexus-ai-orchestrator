@@ -130,6 +130,25 @@ describe('POST /api/runs/stream: simulated execution', () => {
   });
 });
 
+describe('POST /api/runs/stream: keep-alive', () => {
+  it('interleaves keep-alive comments during a long run and stops them at the end', async () => {
+    // A 40-node chain takes about 21 s of simulated time, past one heartbeat interval.
+    const nodes = Array.from({ length: 40 }, (_, i) => ({ id: `n${i}`, kind: 'VECTOR_DB' }));
+    const edges = nodes.slice(1).map((node, i) => ({ source: nodes[i]!.id, target: node.id }));
+    const response = await post(graphBody({ graph: { nodes, edges } }));
+
+    const pending = response.text();
+    await vi.runAllTimersAsync();
+    const raw = await pending;
+
+    expect(raw).toContain(': keep-alive\n\n');
+    const events = feedSse(INITIAL_SSE_STATE, raw).events;
+    expect(telemetryOf(events)).toHaveLength(80);
+    expect(events.at(-1)).toEqual({ event: 'done', data: '{"status":"completed"}' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 /* -------------------------------------------------------------------------- */
 /* Real mode: the Gemini adapter runs against a scripted `fetch`.             */
 /* -------------------------------------------------------------------------- */
