@@ -156,8 +156,9 @@ Shortcuts are suppressed while typing in a field.
 
 - Cost figures (`MODEL_PRICING`, `GEMINI_PRICING` in `src/config/telemetry.ts`) are
   **estimates**; reconcile them with the provider's rate card before relying on them.
-- A node's configured `provider`/`model` is currently informational — real execution uses
-  the server-side `GEMINI_MODEL`.
+- An LLM Core's sampling settings apply to the core itself and to every Agent or Classifier
+  bound to it through `llmCoreRef`. Its `provider`/`model` are informational — real
+  execution uses the server-side `GEMINI_MODEL`.
 - A run request is capped at 1 MB and 200 nodes; larger requests are rejected with `413`.
 - SSE on serverless platforms may hit request-duration limits; local `npm run dev` is unaffected.
 - The execution endpoint is unauthenticated; add a gate before exposing it publicly, since

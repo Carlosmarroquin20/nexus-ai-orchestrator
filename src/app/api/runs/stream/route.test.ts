@@ -155,6 +155,8 @@ describe('POST /api/runs/stream: keep-alive', () => {
 
 interface ModelCall {
   readonly signal: AbortSignal | null | undefined;
+  /** Parsed `generateContent` request body sent to the provider. */
+  readonly body: Record<string, unknown>;
   readonly release: () => void;
 }
 
@@ -176,7 +178,11 @@ const stubModelEndpoint = (): ModelCall[] => {
         new Promise<Response>((resolve, reject) => {
           const signal = init.signal;
           signal?.addEventListener('abort', () => reject(signal.reason));
-          calls.push({ signal, release: () => resolve(Response.json(GEMINI_REPLY)) });
+          calls.push({
+            signal,
+            body: JSON.parse(String(init.body)) as Record<string, unknown>,
+            release: () => resolve(Response.json(GEMINI_REPLY)),
+          });
         }),
     ),
   );
@@ -255,5 +261,31 @@ describe('POST /api/runs/stream: real execution', () => {
     await vi.waitFor(() => expect(calls).toHaveLength(1));
     client.abort();
     await vi.waitFor(() => expect(calls[0]!.signal?.aborted).toBe(true));
+  });
+
+  it('forwards the sampling settings of an agent to the provider request', async () => {
+    const calls = stubModelEndpoint();
+    const response = await post(
+      graphBody({
+        graph: {
+          nodes: [
+            {
+              id: 'agent',
+              kind: 'AGENT',
+              params: { systemPrompt: 'be brief', temperature: 0.2, maxOutputTokens: 512 },
+            },
+          ],
+          edges: [],
+        },
+      }),
+    );
+    const body = response.text();
+
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]!.body['generationConfig']).toEqual({ temperature: 0.2, maxOutputTokens: 512 });
+    expect(calls[0]!.body['systemInstruction']).toEqual({ parts: [{ text: 'be brief' }] });
+
+    calls[0]!.release();
+    await body;
   });
 });

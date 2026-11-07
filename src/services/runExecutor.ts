@@ -23,13 +23,8 @@
  */
 
 import { useGraphStore } from '@/store/useGraphStore';
-import type {
-  ExecutionDescriptor,
-  ExecutionNodeParams,
-  ExecutionRequest,
-  RunOutcome,
-} from '@/types/execution';
-import { NODE_KIND, type NexusEdge, type NexusNode } from '@/types/graph';
+import type { ExecutionRequest, RunOutcome } from '@/types/execution';
+import { buildExecutionDescriptor } from '@/utils/executionDescriptor';
 import { isRecord } from '@/utils/guards';
 import { INITIAL_SSE_STATE, type SseEvent, feedSse } from '@/utils/sseParser';
 import { parseTelemetryEvent, safeJsonParse } from '@/utils/telemetryEvent';
@@ -46,33 +41,6 @@ const FAILURE_REASON = {
 } as const;
 
 let activeController: AbortController | null = null;
-
-/** Extracts the execution-relevant parameters from a node's variant config. */
-const extractParams = (node: NexusNode): ExecutionNodeParams => {
-  switch (node.data.kind) {
-    case NODE_KIND.AGENT:
-      return { systemPrompt: node.data.config.systemPrompt };
-    case NODE_KIND.CLASSIFIER:
-      return { labels: node.data.config.labels };
-    case NODE_KIND.LLM_CORE:
-      return {
-        temperature: node.data.config.temperature,
-        maxOutputTokens: node.data.config.maxOutputTokens,
-      };
-    case NODE_KIND.PROMPT_TEMPLATE:
-      return { template: node.data.config.template };
-    default:
-      return {};
-  }
-};
-
-const buildDescriptor = (
-  nodes: readonly NexusNode[],
-  edges: readonly NexusEdge[],
-): ExecutionDescriptor => ({
-  nodes: nodes.map((node) => ({ id: node.id, kind: node.data.kind, params: extractParams(node) })),
-  edges: edges.map((edge) => ({ source: edge.source, target: edge.target })),
-});
 
 const readOutcome = (data: string): RunOutcome => {
   const payload = safeJsonParse(data);
@@ -196,7 +164,7 @@ export const startRun = (): void => {
   const runId = store.beginRun();
   const request: ExecutionRequest = {
     runId,
-    graph: buildDescriptor(store.nodes, store.edges),
+    graph: buildExecutionDescriptor(store.nodes, store.edges),
     ...(store.failRate > 0 ? { failRate: store.failRate } : {}),
   };
 
