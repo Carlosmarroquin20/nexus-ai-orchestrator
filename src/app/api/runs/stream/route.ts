@@ -222,6 +222,16 @@ export async function POST(request: Request): Promise<Response> {
   const provider = resolveLlmProvider();
   const realMode = provider !== null;
 
+  // Aborted when the client goes away, however that surfaces: the request signal,
+  // or the consumer cancelling the response stream (the only signal some runtimes
+  // deliver). Model calls and their retry delays are bound to it, so an abandoned
+  // run stops consuming the provider immediately instead of finishing its level.
+  const runAbort = new AbortController();
+  const abortRun = (): void => runAbort.abort();
+  if (request.signal.aborted) abortRun();
+  else request.signal.addEventListener('abort', abortRun, { once: true });
+  const isAborted = (): boolean => runAbort.signal.aborted;
+
   const levels = computeExecutionLevels(descriptor.nodes, descriptor.edges);
   const kindById = new Map(descriptor.nodes.map((node) => [node.id, node.kind]));
   const paramsById = new Map(descriptor.nodes.map((node) => [node.id, node.params ?? {}]));
@@ -284,7 +294,7 @@ export async function POST(request: Request): Promise<Response> {
         ...(systemInstruction !== undefined ? { systemInstruction } : {}),
         ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
         ...(params.maxOutputTokens !== undefined ? { maxOutputTokens: params.maxOutputTokens } : {}),
-        signal: request.signal,
+        signal: runAbort.signal,
       });
       return {
         outputText: result.text,
@@ -303,18 +313,13 @@ export async function POST(request: Request): Promise<Response> {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      let aborted = false;
-      const onAbort = (): void => {
-        aborted = true;
-      };
-      request.signal.addEventListener('abort', onAbort);
-
       const enqueue = (chunk: string): void => {
-        if (aborted) return;
+        if (isAborted()) return;
         try {
           controller.enqueue(encoder.encode(chunk));
         } catch {
-          aborted = true;
+          // The stream was closed underneath us: treat it as a disconnect.
+          abortRun();
         }
       };
       const sendEvent = (event: TelemetryEvent): void => {
@@ -331,7 +336,7 @@ export async function POST(request: Request): Promise<Response> {
       const skipped = new Set<string>();
 
       const runNode = async (nodeId: string): Promise<void> => {
-        if (aborted) return;
+        if (isAborted()) return;
 
         if (skipped.has(nodeId)) {
           sendEvent(buildEvent(runId, nodeId, 'skipped', {}));
@@ -345,7 +350,7 @@ export async function POST(request: Request): Promise<Response> {
         sendEvent(buildEvent(runId, nodeId, 'running', { inputPayload: { input: truncate(inputText, 280) } }));
         if (!realMode) {
           await sleep(RUNNING_PHASE_MS);
-          if (aborted) return;
+          if (isAborted()) return;
         }
 
         if (failRate > 0 && Math.random() < failRate) {
@@ -361,7 +366,7 @@ export async function POST(request: Request): Promise<Response> {
 
         try {
           const result = await execute(kind, params, inputText);
-          if (aborted) return;
+          if (isAborted()) return;
           outputById.set(nodeId, result.outputText);
           sendEvent(
             buildEvent(runId, nodeId, 'completed', {
@@ -373,7 +378,7 @@ export async function POST(request: Request): Promise<Response> {
             }),
           );
         } catch (error) {
-          if (aborted) return;
+          if (isAborted()) return;
           const code = error instanceof LlmError ? `LLM_${error.status}` : 'EXECUTION_ERROR';
           sendEvent(
             buildEvent(runId, nodeId, 'failed', {
@@ -393,19 +398,22 @@ export async function POST(request: Request): Promise<Response> {
       // (edges only cross to higher levels), so they run concurrently, at most
       // MAX_LEVEL_CONCURRENCY at a time. `runNode` never rejects.
       for (const level of levels) {
-        if (aborted) break;
+        if (isAborted()) break;
         await forEachWithConcurrency(level, MAX_LEVEL_CONCURRENCY, runNode);
-        if (!realMode && !aborted) await sleep(INTER_NODE_GAP_MS);
+        if (!realMode && !isAborted()) await sleep(INTER_NODE_GAP_MS);
       }
 
-      if (!aborted) sendDone(outcome);
+      if (!isAborted()) sendDone(outcome);
 
-      request.signal.removeEventListener('abort', onAbort);
+      request.signal.removeEventListener('abort', abortRun);
       try {
         controller.close();
       } catch {
         // Already closed by an aborted client; nothing to do.
       }
+    },
+    cancel() {
+      abortRun();
     },
   });
 

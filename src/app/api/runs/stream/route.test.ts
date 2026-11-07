@@ -207,4 +207,34 @@ describe('POST /api/runs/stream: real execution', () => {
     expect(telemetryOf(events).filter((frame) => frame.state === 'completed')).toHaveLength(10);
     expect(events.at(-1)).toEqual({ event: 'done', data: '{"status":"completed"}' });
   });
+
+  it('aborts the in-flight model call when the client cancels the stream', async () => {
+    const calls = stubModelEndpoint();
+    const response = await post(independentLlmNodes(1));
+    const reader = response.body!.getReader();
+
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]!.signal?.aborted).toBe(false);
+
+    await reader.cancel();
+    await vi.waitFor(() => expect(calls[0]!.signal?.aborted).toBe(true));
+  });
+
+  it('aborts the in-flight model call when the request signal aborts', async () => {
+    const calls = stubModelEndpoint();
+    const client = new AbortController();
+    const response = await route.POST(
+      new Request(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: independentLlmNodes(1),
+        signal: client.signal,
+      }),
+    );
+    void response.text().catch(() => undefined);
+
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    client.abort();
+    await vi.waitFor(() => expect(calls[0]!.signal?.aborted).toBe(true));
+  });
 });
