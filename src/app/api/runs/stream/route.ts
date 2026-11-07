@@ -39,6 +39,7 @@ import {
 import type { ExecutionNodeParams, RunOutcome } from '@/types/execution';
 import { LlmError } from '@/server/llm/types';
 import { resolveLlmProvider } from '@/server/llm/resolveProvider';
+import { forEachWithConcurrency } from '@/utils/concurrency';
 import { type ExecutionRequestRejection, parseExecutionRequest } from '@/utils/executionRequest';
 import { computeExecutionLevels } from '@/utils/graphValidation';
 import { renderTemplate } from '@/utils/promptTemplate';
@@ -64,6 +65,15 @@ const SEED_INPUT = 'How do I reset my account password?';
  * prompts per node.
  */
 const MAX_REQUEST_BYTES = 1_000_000;
+
+/**
+ * Maximum nodes of one level executing at the same time. Without a bound, a wide
+ * level (up to the 200-node limit) would open that many model requests at once
+ * and run straight into the provider's rate limit, turning a valid pipeline into
+ * a cascade of 429 retries. The critical-path metric still reports the unbounded
+ * ideal, so a level wider than this bound can take longer than that metric.
+ */
+const MAX_LEVEL_CONCURRENCY = 4;
 
 const REJECTION_STATUS: Readonly<Record<ExecutionRequestRejection, number>> = {
   MALFORMED: 400,
@@ -380,11 +390,11 @@ export async function POST(request: Request): Promise<Response> {
       };
 
       // Execute level by level. Within a level the nodes are mutually independent
-      // (edges only cross to higher levels), so they run concurrently — matching
-      // the parallelism the critical-path metric assumes.
+      // (edges only cross to higher levels), so they run concurrently, at most
+      // MAX_LEVEL_CONCURRENCY at a time. `runNode` never rejects.
       for (const level of levels) {
         if (aborted) break;
-        await Promise.all(level.map((nodeId) => runNode(nodeId)));
+        await forEachWithConcurrency(level, MAX_LEVEL_CONCURRENCY, runNode);
         if (!realMode && !aborted) await sleep(INTER_NODE_GAP_MS);
       }
 

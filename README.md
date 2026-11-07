@@ -108,10 +108,10 @@ diagnostics, and (de)serialization. Run `npm test`.
 
 `POST /api/runs/stream` takes the graph as a JSON body and answers with a stream in
 Server-Sent Events framing. It sequences the graph in topological levels — nodes within
-a level are independent and run concurrently — and emits `TelemetryEvent` frames (one
-`running`, then `completed` or `failed`, per node) plus a terminal `done` event. The
-client reads the stream with `fetch`, so prompts never travel in a URL
-([ADR 0008](docs/adr/0008-post-body-run-request.md)).
+a level are independent and run concurrently, at most four at a time — and emits
+`TelemetryEvent` frames (one `running`, then `completed` or `failed`, per node) plus a
+terminal `done` event. The client reads the stream with `fetch`, so prompts never travel
+in a URL ([ADR 0008](docs/adr/0008-post-body-run-request.md)).
 
 - **Real mode** (`GEMINI_API_KEY` set): LLM-backed nodes (`AGENT`, `LLM_CORE`, `CLASSIFIER`)
   call Gemini and report real latency, token usage, and output. Requests are retried with

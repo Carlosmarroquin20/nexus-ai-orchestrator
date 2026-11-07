@@ -129,3 +129,82 @@ describe('POST /api/runs/stream: simulated execution', () => {
     expect(events.at(-1)).toEqual({ event: 'done', data: '{"status":"failed"}' });
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Real mode: the Gemini adapter runs against a scripted `fetch`.             */
+/* -------------------------------------------------------------------------- */
+
+interface ModelCall {
+  readonly signal: AbortSignal | null | undefined;
+  readonly release: () => void;
+}
+
+const GEMINI_REPLY = {
+  candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+  usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1 },
+};
+
+/**
+ * Replaces `fetch` with a model endpoint whose calls stay pending until the test
+ * releases them, and which rejects like the platform `fetch` when aborted.
+ */
+const stubModelEndpoint = (): ModelCall[] => {
+  const calls: ModelCall[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          const signal = init.signal;
+          signal?.addEventListener('abort', () => reject(signal.reason));
+          calls.push({ signal, release: () => resolve(Response.json(GEMINI_REPLY)) });
+        }),
+    ),
+  );
+  return calls;
+};
+
+const independentLlmNodes = (count: number): string =>
+  graphBody({
+    graph: {
+      nodes: Array.from({ length: count }, (_, i) => ({ id: `n${i}`, kind: 'LLM_CORE' })),
+      edges: [],
+    },
+  });
+
+describe('POST /api/runs/stream: real execution', () => {
+  beforeEach(() => {
+    // The adapter paces itself on the network, so real timers are required.
+    vi.useRealTimers();
+    vi.stubEnv('GEMINI_API_KEY', 'test-key');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps at most four model calls of a level in flight', async () => {
+    const calls = stubModelEndpoint();
+    const response = await post(independentLlmNodes(10));
+    const body = response.text();
+
+    await vi.waitFor(() => expect(calls).toHaveLength(4));
+    // No fifth call may start while the first four are pending.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).toHaveLength(4);
+
+    calls[0]!.release();
+    await vi.waitFor(() => expect(calls).toHaveLength(5));
+
+    // Drain the rest: release every pending call until all ten have run.
+    await vi.waitFor(() => {
+      for (const call of calls) call.release();
+      expect(calls).toHaveLength(10);
+    });
+    for (const call of calls) call.release();
+
+    const events = feedSse(INITIAL_SSE_STATE, await body).events;
+    expect(telemetryOf(events).filter((frame) => frame.state === 'completed')).toHaveLength(10);
+    expect(events.at(-1)).toEqual({ event: 'done', data: '{"status":"completed"}' });
+  });
+});

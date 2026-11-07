@@ -23,8 +23,9 @@ named `mode` event up front, and a terminal `done` event.
 - **Simulated mode** (no key): deterministic per-kind telemetry, so the app runs offline.
 - Output flows downstream (predecessors' outputs become a successor's input). Nodes
   are executed in topological **levels** (longest-path rank); nodes within a level are
-  independent and run concurrently, matching the parallelism the critical-path metric
-  assumes. A failed node marks its transitive descendants `skipped`.
+  independent and run concurrently, bounded to a fixed number in flight so a wide level
+  cannot flood the model provider. A failed node marks its transitive descendants
+  `skipped`.
 - The graph topology travels in the request (originally the GET query string; a POST
   body since ADR 0008).
 
