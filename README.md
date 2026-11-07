@@ -19,7 +19,7 @@ application is fully functional with or without credentials.
 
 ## Getting started
 
-Requires **Node.js 20.9+** (the Next.js 16 minimum).
+Requires **Node.js 22.12+** (Node 20 is end-of-life, and the test toolchain needs 22.12).
 
 ```bash
 npm install

@@ -13,6 +13,8 @@ import { defineConfig } from 'vitest/config';
  * out on purpose: they need a DOM environment, and reporting them as 0% would
  * only dilute the signal the thresholds guard. The thresholds sit a few points
  * under the measured values, so they catch a real drop without failing on noise.
+ * They are calibrated for the AST-based V8 remapping used since Vitest 4, which
+ * counts statements and branches differently from earlier versions.
  */
 export default defineConfig({
   resolve: {
@@ -29,10 +31,10 @@ export default defineConfig({
       exclude: ['src/**/*.test.ts'],
       reporter: ['text-summary', 'html'],
       thresholds: {
-        statements: 88,
+        statements: 85,
         lines: 88,
-        functions: 85,
-        branches: 80,
+        functions: 82,
+        branches: 74,
       },
     },
   },
