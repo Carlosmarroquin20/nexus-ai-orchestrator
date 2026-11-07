@@ -61,6 +61,16 @@ export const GEMINI_PRICING: TokenPricing = {
 };
 
 /**
+ * Token pricing applied to simulated runs (no API key configured). Illustrative
+ * only: it gives the simulator plausible cost figures, split between the large
+ * generative profile (agents, LLM cores) and the small classifier profile.
+ */
+export const SIMULATED_PRICING: Readonly<{ generative: TokenPricing; classifier: TokenPricing }> = {
+  generative: { inputPerMillionUSD: 3, outputPerMillionUSD: 15 },
+  classifier: { inputPerMillionUSD: 1, outputPerMillionUSD: 5 },
+};
+
+/**
  * Latency classification thresholds in milliseconds. The inspector buckets a
  * node's `latencyMs` into nominal (< degraded), degraded ([degraded, critical)),
  * and critical (>= critical) bands for color coding.

@@ -38,6 +38,7 @@ import {
   asNodeId,
   asRunId,
 } from '@/types/graph';
+import { SIMULATED_PRICING } from '@/config/telemetry';
 import type { ExecutionNodeParams, RunOutcome } from '@/types/execution';
 import { LlmError } from '@/server/llm/types';
 import { resolveLlmProvider } from '@/server/llm/resolveProvider';
@@ -122,7 +123,7 @@ const simulateMetrics = (kind: NexusNodeKind): Omit<NodeExecutionResult, 'output
         inputTokens,
         outputTokens,
         latencyMs: randomInt(700, 4200),
-        costInUSD: (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15,
+        costInUSD: computeTokenCost(SIMULATED_PRICING.generative, inputTokens, outputTokens),
       };
     }
     case 'CLASSIFIER': {
@@ -132,15 +133,17 @@ const simulateMetrics = (kind: NexusNodeKind): Omit<NodeExecutionResult, 'output
         inputTokens,
         outputTokens,
         latencyMs: randomInt(150, 900),
-        costInUSD: (inputTokens / 1_000_000) * 1 + (outputTokens / 1_000_000) * 5,
+        costInUSD: computeTokenCost(SIMULATED_PRICING.classifier, inputTokens, outputTokens),
       };
     }
     case 'VECTOR_DB':
       return { inputTokens: 0, outputTokens: 0, latencyMs: randomInt(40, 320), costInUSD: 0 };
     case 'PROMPT_TEMPLATE':
       return { inputTokens: 0, outputTokens: 0, latencyMs: randomInt(2, 25), costInUSD: 0 };
-    default:
-      return { inputTokens: 0, outputTokens: 0, latencyMs: randomInt(50, 200), costInUSD: 0 };
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
   }
 };
 
