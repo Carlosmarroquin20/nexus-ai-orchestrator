@@ -23,7 +23,12 @@ Adopt a layered verification pyramid, all wired into CI on every push and pull r
    guarantee it never throws on arbitrary input.
 5. **State-machine tests** of the Zustand store in a Node environment (reference
    preservation, DAG admissibility, run lifecycle, history, clamps).
-6. **Production build** (`next build`).
+6. **Coverage gate** over the layers the Node environment can exercise (pure core,
+   store, run controller, server modules, route handler), with thresholds a few points
+   under the measured values. React components, hooks, and pages are excluded rather
+   than counted as 0%, since they have no DOM test environment. The HTML report is
+   kept as a CI artifact.
+7. **Production build** (`next build`).
 
 ## Consequences
 

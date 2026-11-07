@@ -49,15 +49,16 @@ cp .env.example .env.local
 
 ## Scripts
 
-| Script               | Purpose                                  |
-| -------------------- | ---------------------------------------- |
-| `npm run dev`        | Start the dev server                     |
-| `npm run build`      | Production build                         |
-| `npm run start`      | Serve the production build               |
-| `npm run lint`       | ESLint (flat config, `eslint .`)         |
-| `npm run type-check` | `tsc --noEmit` (strict)                  |
-| `npm test`           | Run the Vitest suite                     |
-| `npm run test:watch` | Vitest in watch mode                     |
+| Script                  | Purpose                                |
+| ----------------------- | -------------------------------------- |
+| `npm run dev`           | Start the dev server                   |
+| `npm run build`         | Production build                       |
+| `npm run start`         | Serve the production build             |
+| `npm run lint`          | ESLint (flat config, `eslint .`)       |
+| `npm run type-check`    | `tsc --noEmit` (strict)                |
+| `npm test`              | Run the Vitest suite                   |
+| `npm run test:watch`    | Vitest in watch mode                   |
+| `npm run test:coverage` | Vitest with a coverage gate (as in CI) |
 
 ## Architecture
 
