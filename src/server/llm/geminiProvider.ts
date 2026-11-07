@@ -120,6 +120,7 @@ const callGemini = async (
   const generationConfig: Record<string, unknown> = {
     ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
     ...(request.maxOutputTokens !== undefined ? { maxOutputTokens: request.maxOutputTokens } : {}),
+    ...(request.topP !== undefined ? { topP: request.topP } : {}),
   };
   const payload = JSON.stringify({
     contents: [{ role: 'user', parts: [{ text: request.prompt }] }],

@@ -24,13 +24,14 @@ import {
   type NodeId,
 } from '@/types/graph';
 
-type SamplingParams = Pick<ExecutionNodeParams, 'temperature' | 'maxOutputTokens'>;
+type SamplingParams = Pick<ExecutionNodeParams, 'temperature' | 'maxOutputTokens' | 'topP'>;
 
 const NO_SAMPLING: SamplingParams = {};
 
 const samplingOf = (config: LlmCoreNodeConfig): SamplingParams => ({
   temperature: config.temperature,
   maxOutputTokens: config.maxOutputTokens,
+  topP: config.topP,
 });
 
 /** Sampling settings of the LLM_CORE bound by `ref`, or none if it does not resolve. */

@@ -46,6 +46,7 @@ const parseParams = (raw: unknown): ExecutionNodeParams => {
     ...(Array.isArray(raw['labels']) ? { labels: raw['labels'].filter(isString) } : {}),
     ...(isFiniteNumber(raw['temperature']) ? { temperature: raw['temperature'] } : {}),
     ...(isFiniteNumber(raw['maxOutputTokens']) ? { maxOutputTokens: raw['maxOutputTokens'] } : {}),
+    ...(isFiniteNumber(raw['topP']) ? { topP: raw['topP'] } : {}),
   };
 };
 

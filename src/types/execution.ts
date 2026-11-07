@@ -18,6 +18,8 @@ export interface ExecutionNodeParams {
   readonly labels?: readonly string[];
   readonly temperature?: number;
   readonly maxOutputTokens?: number;
+  /** Nucleus-sampling cutoff in [0, 1]. */
+  readonly topP?: number;
 }
 
 export interface ExecutionNodeRef {

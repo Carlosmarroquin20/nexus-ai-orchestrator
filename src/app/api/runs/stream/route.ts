@@ -304,6 +304,7 @@ export async function POST(request: Request): Promise<Response> {
         ...(systemInstruction !== undefined ? { systemInstruction } : {}),
         ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
         ...(params.maxOutputTokens !== undefined ? { maxOutputTokens: params.maxOutputTokens } : {}),
+        ...(params.topP !== undefined ? { topP: params.topP } : {}),
         signal: runAbort.signal,
       });
       return {

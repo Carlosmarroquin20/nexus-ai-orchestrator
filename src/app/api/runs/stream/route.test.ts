@@ -272,7 +272,12 @@ describe('POST /api/runs/stream: real execution', () => {
             {
               id: 'agent',
               kind: 'AGENT',
-              params: { systemPrompt: 'be brief', temperature: 0.2, maxOutputTokens: 512 },
+              params: {
+                systemPrompt: 'be brief',
+                temperature: 0.2,
+                maxOutputTokens: 512,
+                topP: 0.9,
+              },
             },
           ],
           edges: [],
@@ -282,7 +287,11 @@ describe('POST /api/runs/stream: real execution', () => {
     const body = response.text();
 
     await vi.waitFor(() => expect(calls).toHaveLength(1));
-    expect(calls[0]!.body['generationConfig']).toEqual({ temperature: 0.2, maxOutputTokens: 512 });
+    expect(calls[0]!.body['generationConfig']).toEqual({
+      temperature: 0.2,
+      maxOutputTokens: 512,
+      topP: 0.9,
+    });
     expect(calls[0]!.body['systemInstruction']).toEqual({ parts: [{ text: 'be brief' }] });
 
     calls[0]!.release();

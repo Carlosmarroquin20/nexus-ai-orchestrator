@@ -18,6 +18,7 @@ export interface LlmGenerateRequest {
   readonly systemInstruction?: string;
   readonly temperature?: number;
   readonly maxOutputTokens?: number;
+  readonly topP?: number;
   readonly signal?: AbortSignal;
 }
 

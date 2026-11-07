@@ -46,6 +46,7 @@ describe('parseExecutionRequest', () => {
             node('a', 'AGENT', {
               systemPrompt: 'be brief',
               temperature: 'hot',
+              topP: 0.8,
               labels: ['x', 3, 'y'],
               unknown: true,
             }),
@@ -59,6 +60,7 @@ describe('parseExecutionRequest', () => {
       expect(result.request.graph.nodes[0]!.params).toEqual({
         systemPrompt: 'be brief',
         labels: ['x', 'y'],
+        topP: 0.8,
       });
     }
   });

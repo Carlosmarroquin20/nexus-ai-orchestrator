@@ -8,7 +8,7 @@ import { buildExecutionDescriptor } from '@/utils/executionDescriptor';
 const core = makeNode({
   id: 'core',
   kind: NODE_KIND.LLM_CORE,
-  config: { temperature: 0.2, maxOutputTokens: 512 },
+  config: { temperature: 0.2, maxOutputTokens: 512, topP: 0.9 },
 });
 
 const paramsOf = (descriptor: ReturnType<typeof buildExecutionDescriptor>, id: string) =>
@@ -25,6 +25,7 @@ describe('buildExecutionDescriptor', () => {
       systemPrompt: 'be brief',
       temperature: 0.2,
       maxOutputTokens: 512,
+      topP: 0.9,
     });
   });
 
@@ -38,6 +39,7 @@ describe('buildExecutionDescriptor', () => {
       labels: ['a', 'b'],
       temperature: 0.2,
       maxOutputTokens: 512,
+      topP: 0.9,
     });
   });
 
@@ -70,7 +72,7 @@ describe('buildExecutionDescriptor', () => {
       NODE_KIND.PROMPT_TEMPLATE,
       NODE_KIND.VECTOR_DB,
     ]);
-    expect(paramsOf(descriptor, 'core')).toEqual({ temperature: 0.2, maxOutputTokens: 512 });
+    expect(paramsOf(descriptor, 'core')).toEqual({ temperature: 0.2, maxOutputTokens: 512, topP: 0.9 });
     expect(paramsOf(descriptor, 'template')).toEqual({ template: 'Q: {{q}}' });
     expect(paramsOf(descriptor, 'store')).toEqual({});
     expect(descriptor.edges).toEqual([{ source: 'store', target: 'template' }]);
