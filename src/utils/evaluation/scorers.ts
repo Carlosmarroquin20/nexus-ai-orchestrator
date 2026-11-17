@@ -11,11 +11,11 @@
 
 import { type EvalCase, type EvalCheck } from './dataset';
 import { normalizeOutput } from './normalize';
+import { compileSafeRegex } from './safeRegex';
 
 /**
- * Upper bound on the output a regex check is applied to. Patterns come from a
- * dataset file and run on the server; bounding the subject (as well as the
- * pattern, see `dataset.ts`) caps the cost of a pathological pattern. A longer
+ * Upper bound on the output a regex check is applied to. Matching is linear in
+ * the subject (`safeRegex.ts`), and the bound keeps that cost small. A longer
  * output is reported as an error rather than silently truncated.
  */
 export const MAX_REGEX_SUBJECT_LENGTH = 20_000;
@@ -96,10 +96,20 @@ export const scoreCheck = (check: EvalCheck, output: string | null): CheckResult
           detail: `Output exceeds ${MAX_REGEX_SUBJECT_LENGTH} characters; regex checks are not applied to it.`,
         };
       }
+      const compiled = compileSafeRegex(check.pattern, check.flags);
+      if (!compiled.ok) {
+        // Unreachable for parsed datasets, which compile every pattern up front.
+        return {
+          check,
+          status: 'error',
+          actual: output,
+          detail: `Regex ${compiled.field} ${compiled.error}`,
+        };
+      }
       return verdict(
         check,
         output,
-        new RegExp(check.pattern, check.flags).test(output),
+        compiled.regex.test(output),
         `Expected the output to match /${check.pattern}/${check.flags}, got "${preview(output)}".`,
       );
     }

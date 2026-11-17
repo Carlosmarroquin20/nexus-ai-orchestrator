@@ -16,6 +16,7 @@
 import { isRecord, isString } from '../guards';
 
 import { normalizeOutput } from './normalize';
+import { compileSafeRegex } from './safeRegex';
 
 export const EVAL_DATASET_SCHEMA_VERSION = 1 as const;
 
@@ -24,14 +25,11 @@ export const MAX_EVAL_CASES = 100;
 export const MAX_CHECKS_PER_CASE = 20;
 export const MAX_CASE_INPUT_LENGTH = 20_000;
 /**
- * Regex patterns run on the server against model output. Length-bounding them
- * limits, but cannot rule out, catastrophic backtracking; the output length is
- * bounded too when they are applied (see `scorers.ts`).
+ * Regex checks run on the server through a linear-time engine (`safeRegex.ts`),
+ * so pattern length bounds compile cost and keeps datasets readable rather than
+ * guarding against backtracking.
  */
 export const MAX_REGEX_PATTERN_LENGTH = 200;
-
-/** Flags allowed for regex checks: no `g`/`y`, which make `RegExp.test` stateful. */
-const ALLOWED_REGEX_FLAGS = /^[imsu]*$/;
 
 interface CheckBase {
   /** Node whose output the check inspects. */
@@ -142,14 +140,8 @@ const parseCheck = (raw: unknown, where: string): EvalCheck => {
         );
       }
       const flags = optionalString(raw['flags'], `${where}.flags`) ?? '';
-      if (!ALLOWED_REGEX_FLAGS.test(flags)) {
-        throw new DatasetError(`${where}.flags may only contain i, m, s, u.`);
-      }
-      try {
-        new RegExp(pattern, flags);
-      } catch {
-        throw new DatasetError(`${where}.pattern is not a valid regular expression.`);
-      }
+      const compiled = compileSafeRegex(pattern, flags);
+      if (!compiled.ok) throw new DatasetError(`${where}.${compiled.field} ${compiled.error}`);
       return { scorer, nodeId, pattern, flags };
     }
     default:

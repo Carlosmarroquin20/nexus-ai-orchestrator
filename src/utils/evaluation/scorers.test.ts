@@ -56,6 +56,19 @@ describe('scoreCheck', () => {
     expect(result.detail).toContain('"n"');
   });
 
+  it('matches a backtracking-prone pattern in linear time', () => {
+    // `^(a+)+$` takes exponential time in a backtracking engine on this subject.
+    const started = performance.now();
+    expect(statusOf(regex('^(a+)+$'), `${'a'.repeat(5_000)}b`)).toBe('failed');
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
+  it('applies the m and s flags', () => {
+    expect(statusOf(regex('^b$', 'm'), 'a\nb')).toBe('passed');
+    expect(statusOf(regex('a.b', 's'), 'a\nb')).toBe('passed');
+    expect(statusOf(regex('a.b'), 'a\nb')).toBe('failed');
+  });
+
   it('refuses to run a regex over an oversized output', () => {
     const result = scoreCheck(regex('a'), 'a'.repeat(MAX_REGEX_SUBJECT_LENGTH + 1));
     expect(result.status).toBe('error');

@@ -111,8 +111,10 @@ describe('parseEvalDataset', () => {
   it('rejects unsafe or invalid regex checks', () => {
     const regex = (pattern: string, flags?: string) =>
       dataset({ cases: [evalCase({ checks: [{ nodeId: 'n', scorer: 'regex', pattern, flags }] })] });
-    expect(errorOf(regex('('))).toMatch(/not a valid regular expression/);
-    expect(errorOf(regex('a', 'g'))).toMatch(/flags may only contain/);
+    expect(errorOf(regex('('))).toMatch(/checks\[0\]\.pattern is not a valid RE2 regular expression/);
+    expect(errorOf(regex('(a)\\1'))).toMatch(/backreferences and lookaround are not supported/);
+    expect(errorOf(regex('(?=x)a'))).toMatch(/not a valid RE2 regular expression/);
+    expect(errorOf(regex('a', 'g'))).toMatch(/checks\[0\]\.flags may only contain/);
     expect(errorOf(regex('a', 'y'))).toMatch(/flags may only contain/);
     expect(errorOf(regex('a'.repeat(MAX_REGEX_PATTERN_LENGTH + 1)))).toMatch(/exceeds/);
   });
