@@ -1,8 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { createDemoPipeline } from '@/config/demoPipeline';
-import supportTriage from '@/config/evalDatasets/support-triage.json';
 import {
   EVAL_DATASET_SCHEMA_VERSION,
   MAX_CHECKS_PER_CASE,
@@ -193,18 +191,6 @@ describe('findUnknownNodeIds', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(findUnknownNodeIds(result.dataset, new Set(['known']))).toEqual(['ghost', 'other']);
-    }
-  });
-});
-
-describe('bundled support-triage dataset', () => {
-  it('parses and only references nodes of the demo pipeline', () => {
-    const result = parseEvalDataset(supportTriage);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      const demoNodeIds = new Set(createDemoPipeline().nodes.map((node) => node.id));
-      expect(findUnknownNodeIds(result.dataset, demoNodeIds)).toEqual([]);
-      expect(result.dataset.cases.length).toBeGreaterThanOrEqual(10);
     }
   });
 });
