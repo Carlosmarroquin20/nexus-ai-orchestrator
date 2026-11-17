@@ -26,13 +26,12 @@ import { useGraphStore } from '@/store/useGraphStore';
 import type { ExecutionRequest, RunOutcome } from '@/types/execution';
 import { buildExecutionDescriptor } from '@/utils/executionDescriptor';
 import { isRecord } from '@/utils/guards';
-import { INITIAL_SSE_STATE, type SseEvent, feedSse } from '@/utils/sseParser';
+import type { SseEvent } from '@/utils/sseParser';
 import { parseTelemetryEvent, safeJsonParse } from '@/utils/telemetryEvent';
 
-const STREAM_ENDPOINT = '/api/runs/stream';
+import { readEventStream, readRejection } from './eventStreamClient';
 
-/** Display bound for a server-supplied rejection reason. */
-const MAX_REASON_LENGTH = 200;
+const STREAM_ENDPOINT = '/api/runs/stream';
 
 /** Reasons for failures that carry no server-supplied message. */
 const FAILURE_REASON = {
@@ -93,18 +92,6 @@ const failRun = (reason: string): void => {
   store.setStreamStatus('error', reason);
 };
 
-/**
- * Reason for a non-2xx response. The route answers rejections in plain text; any
- * other body (a framework or proxy error page) is not fit for display, so only the
- * status is reported for it.
- */
-const readRejection = async (response: Response): Promise<string> => {
-  const fallback = `Run request rejected (HTTP ${response.status}).`;
-  if (!(response.headers.get('content-type') ?? '').startsWith('text/plain')) return fallback;
-  const text = (await response.text().catch(() => '')).trim();
-  return text.length > 0 ? text.slice(0, MAX_REASON_LENGTH) : fallback;
-};
-
 const consumeStream = async (
   controller: AbortController,
   request: ExecutionRequest,
@@ -121,30 +108,15 @@ const consumeStream = async (
     });
     if (!isCurrent()) return;
     if (!response.ok || response.body === null) {
-      const reason = await readRejection(response);
+      const reason = await readRejection(response, 'Run request');
       if (isCurrent()) failRun(reason);
       return;
     }
     useGraphStore.getState().setStreamStatus('open');
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let state = INITIAL_SSE_STATE;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (!isCurrent()) return;
-      if (done) break;
-      const step = feedSse(state, decoder.decode(value, { stream: true }));
-      state = step.state;
-      for (const event of step.events) {
-        if (applyEvent(event)) {
-          void reader.cancel();
-          return;
-        }
-      }
-    }
+    const end = await readEventStream(response.body, { isCurrent, onEvent: applyEvent });
     // The body ended without a `done` event: the server went away mid-run.
-    failRun(FAILURE_REASON.interrupted);
+    if (end === 'ended') failRun(FAILURE_REASON.interrupted);
   } catch {
     // An abort issued by `teardown` has already cleared the controller, so it is
     // filtered out here; anything else is a genuine transport failure.
