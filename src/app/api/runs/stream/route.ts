@@ -29,7 +29,6 @@
  * so a third-party page cannot start a (billable) run in the user's browser.
  */
 
-import { DEFAULT_RUN_INPUT } from '@/config/execution';
 import type { RunOutcome } from '@/types/execution';
 import type { TelemetryEvent } from '@/types/graph';
 import { enforceAccess } from '@/server/accessGate';
@@ -117,7 +116,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.ok) {
     return new Response(parsed.error, { status: REJECTION_STATUS[parsed.code] });
   }
-  const { runId, graph: descriptor, failRate } = parsed.request;
+  const { runId, graph: descriptor, failRate, input } = parsed.request;
 
   // Resolve the LLM provider from the server env (port/adapter). Absent provider
   // -> simulated fallback. Credentials live in the adapter, never client-exposed.
@@ -160,7 +159,7 @@ export async function POST(request: Request): Promise<Response> {
       const { outcome } = await runPipeline({
         runId,
         descriptor,
-        input: DEFAULT_RUN_INPUT,
+        input,
         failRate,
         provider,
         signal: runAbort.signal,

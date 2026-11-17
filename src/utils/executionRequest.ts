@@ -13,6 +13,7 @@ import type {
   ExecutionNodeParams,
   ExecutionRequest,
 } from '@/types/execution';
+import { DEFAULT_RUN_INPUT } from '@/config/execution';
 import { isNodeKind } from '@/types/graph';
 
 import { isFiniteNumber, isRecord, isString } from './guards';
@@ -21,10 +22,15 @@ import { isFiniteNumber, isRecord, isString } from './guards';
 export const MAX_EXECUTION_NODES = 200;
 /** Run ids are client-minted (`run_<uuid>`); the bound only rejects abuse. */
 export const MAX_RUN_ID_LENGTH = 128;
+/** Bound on the run input; the body cap alone would allow a single 1 MB prompt. */
+export const MAX_INPUT_LENGTH = 20_000;
 
 export type ExecutionRequestRejection = 'MALFORMED' | 'EMPTY_GRAPH' | 'TOO_MANY_NODES';
 
-/** A validated request: `failRate` is always present and clamped to [0,1]. */
+/**
+ * A validated request: `failRate` is always present and clamped to [0,1], and
+ * `input` is always present, defaulting to `DEFAULT_RUN_INPUT`.
+ */
 export type NormalizedExecutionRequest = Required<ExecutionRequest>;
 
 export type ExecutionRequestParseResult =
@@ -102,5 +108,11 @@ export const parseExecutionRequest = (raw: unknown): ExecutionRequestParseResult
   const rawFailRate = raw['failRate'];
   const failRate = isFiniteNumber(rawFailRate) ? Math.min(Math.max(rawFailRate, 0), 1) : 0;
 
-  return { ok: true, request: { runId, graph, failRate } };
+  const rawInput = raw['input'];
+  if (rawInput !== undefined && (!isString(rawInput) || rawInput.length > MAX_INPUT_LENGTH)) {
+    return reject('MALFORMED', `"input" must be a string of at most ${MAX_INPUT_LENGTH} characters.`);
+  }
+  const input = rawInput ?? DEFAULT_RUN_INPUT;
+
+  return { ok: true, request: { runId, graph, failRate, input } };
 };

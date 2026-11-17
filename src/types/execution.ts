@@ -46,6 +46,8 @@ export interface ExecutionRequest {
   readonly graph: ExecutionDescriptor;
   /** Fault-injection probability in [0,1]; absent means no injected faults. */
   readonly failRate?: number;
+  /** Text handed to source nodes; absent means the default run input. */
+  readonly input?: string;
 }
 
 /** Terminal outcome of a run, carried by the SSE `done` event. */

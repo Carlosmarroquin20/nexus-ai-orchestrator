@@ -104,6 +104,11 @@ describe('POST /api/runs/stream: request validation', () => {
 });
 
 describe('POST /api/runs/stream: simulated execution', () => {
+  it('hands a custom run input to the source nodes', async () => {
+    const events = await readEvents(await post(graphBody({ input: 'Where is my invoice?' })));
+    expect(telemetryOf(events)[0]!.patch['inputPayload']).toEqual({ input: 'Where is my invoice?' });
+  });
+
   it('streams mode, per-node frames in dependency order, and a terminal done', async () => {
     const response = await post(graphBody());
     expect(response.status).toBe(200);

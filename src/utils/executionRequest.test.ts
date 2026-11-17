@@ -1,7 +1,13 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { MAX_EXECUTION_NODES, MAX_RUN_ID_LENGTH, parseExecutionRequest } from '@/utils/executionRequest';
+import { DEFAULT_RUN_INPUT } from '@/config/execution';
+import {
+  MAX_EXECUTION_NODES,
+  MAX_INPUT_LENGTH,
+  MAX_RUN_ID_LENGTH,
+  parseExecutionRequest,
+} from '@/utils/executionRequest';
 
 const node = (id: string, kind = 'LLM_CORE', params?: unknown): Record<string, unknown> => ({
   id,
@@ -25,6 +31,27 @@ describe('parseExecutionRequest', () => {
       expect(result.request.graph.nodes.map((n) => n.id)).toEqual(['a', 'b']);
       expect(result.request.graph.edges).toEqual([{ source: 'a', target: 'b' }]);
     }
+  });
+
+  it('defaults the run input and keeps a supplied one verbatim', () => {
+    const inputOf = (overrides: Record<string, unknown>): string | null => {
+      const result = parseExecutionRequest(body(overrides));
+      return result.ok ? result.request.input : null;
+    };
+    expect(inputOf({})).toBe(DEFAULT_RUN_INPUT);
+    expect(inputOf({ input: 'Where is my invoice?' })).toBe('Where is my invoice?');
+    expect(inputOf({ input: '' })).toBe('');
+    expect(inputOf({ input: 'x'.repeat(MAX_INPUT_LENGTH) })).toHaveLength(MAX_INPUT_LENGTH);
+  });
+
+  it('rejects a non-string or oversized run input', () => {
+    const codeOf = (input: unknown): string => {
+      const result = parseExecutionRequest(body({ input }));
+      return result.ok ? 'ok' : result.code;
+    };
+    expect(codeOf(42)).toBe('MALFORMED');
+    expect(codeOf(null)).toBe('MALFORMED');
+    expect(codeOf('x'.repeat(MAX_INPUT_LENGTH + 1))).toBe('MALFORMED');
   });
 
   it('clamps failRate to [0, 1] and ignores a non-numeric value', () => {
