@@ -2,11 +2,10 @@
  * Server-sent execution stream: `POST /api/runs/stream` with an
  * `ExecutionRequest` JSON body (ADR 0008).
  *
- * Executes the supplied graph level by level (longest-path rank), running the
- * mutually independent nodes of a level concurrently and streaming a `running`
- * frame then a `completed` (or `failed`) frame per node, and a terminal `done`
- * event. Output text flows downstream: each node's input is the concatenation of
- * its predecessors' outputs (a fixed seed for sources).
+ * HTTP adapter over the pipeline engine (`server/engine/runPipeline`, ADR 0010):
+ * this module owns request validation, access control, cancellation, and the
+ * event-stream framing; execution semantics (level ordering, data flow, failure
+ * propagation, simulated versus real mode) live in the engine.
  *
  * Execution mode is chosen at request time:
  * - Real: when `GEMINI_API_KEY` is set, LLM-backed nodes (AGENT/LLM_CORE/
@@ -30,24 +29,13 @@
  * so a third-party page cannot start a (billable) run in the user's browser.
  */
 
-import {
-  type NexusNodeKind,
-  type NodeExecutionState,
-  type NodeTelemetryPatch,
-  type TelemetryEvent,
-  asNodeId,
-  asRunId,
-} from '@/types/graph';
-import { SIMULATED_PRICING } from '@/config/telemetry';
-import type { ExecutionNodeParams, RunOutcome } from '@/types/execution';
+import { DEFAULT_RUN_INPUT } from '@/config/execution';
+import type { RunOutcome } from '@/types/execution';
+import type { TelemetryEvent } from '@/types/graph';
 import { enforceAccess } from '@/server/accessGate';
-import { LlmError } from '@/server/llm/types';
+import { runPipeline } from '@/server/engine/runPipeline';
 import { resolveLlmProvider } from '@/server/llm/resolveProvider';
-import { forEachWithConcurrency } from '@/utils/concurrency';
 import { type ExecutionRequestRejection, parseExecutionRequest } from '@/utils/executionRequest';
-import { computeExecutionLevels } from '@/utils/graphValidation';
-import { renderTemplate } from '@/utils/promptTemplate';
-import { computeTokenCost } from '@/utils/telemetry';
 import { safeJsonParse } from '@/utils/telemetryEvent';
 
 export const dynamic = 'force-dynamic';
@@ -60,24 +48,12 @@ const SSE_HEADERS: Readonly<Record<string, string>> = {
   'X-Accel-Buffering': 'no',
 };
 
-// Seed input handed to source nodes (no predecessors).
-const SEED_INPUT = 'How do I reset my account password?';
-
 /**
  * Cap on the request body. Route handlers have no built-in body limit, so it is
  * enforced here, before any parsing. Sized for the node limit with multi-kilobyte
  * prompts per node.
  */
 const MAX_REQUEST_BYTES = 1_000_000;
-
-/**
- * Maximum nodes of one level executing at the same time. Without a bound, a wide
- * level (up to the 200-node limit) would open that many model requests at once
- * and run straight into the provider's rate limit, turning a valid pipeline into
- * a cascade of 429 retries. The critical-path metric still reports the unbounded
- * ideal, so a level wider than this bound can take longer than that metric.
- */
-const MAX_LEVEL_CONCURRENCY = 4;
 
 const REJECTION_STATUS: Readonly<Record<ExecutionRequestRejection, number>> = {
   MALFORMED: 400,
@@ -92,61 +68,6 @@ const REJECTION_STATUS: Readonly<Record<ExecutionRequestRejection, number>> = {
  * client decoder, so the frame carries no meaning beyond keeping bytes flowing.
  */
 const HEARTBEAT_INTERVAL_MS = 15_000;
-
-/** Wall-clock pacing for the simulated fallback (real mode is paced by the API). */
-const RUNNING_PHASE_MS = 420;
-const INTER_NODE_GAP_MS = 110;
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-const randomInt = (min: number, max: number): number =>
-  Math.floor(min + Math.random() * (max - min + 1));
-
-const truncate = (text: string, max: number): string =>
-  text.length <= max ? text : `${text.slice(0, max)}…`;
-
-interface NodeExecutionResult {
-  readonly outputText: string;
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-  readonly latencyMs: number;
-  readonly costInUSD: number;
-}
-
-/** Per-kind simulated telemetry profile (used only without an API key). */
-const simulateMetrics = (kind: NexusNodeKind): Omit<NodeExecutionResult, 'outputText'> => {
-  switch (kind) {
-    case 'LLM_CORE':
-    case 'AGENT': {
-      const inputTokens = randomInt(400, 2400);
-      const outputTokens = randomInt(150, 1600);
-      return {
-        inputTokens,
-        outputTokens,
-        latencyMs: randomInt(700, 4200),
-        costInUSD: computeTokenCost(SIMULATED_PRICING.generative, inputTokens, outputTokens),
-      };
-    }
-    case 'CLASSIFIER': {
-      const inputTokens = randomInt(80, 400);
-      const outputTokens = randomInt(5, 40);
-      return {
-        inputTokens,
-        outputTokens,
-        latencyMs: randomInt(150, 900),
-        costInUSD: computeTokenCost(SIMULATED_PRICING.classifier, inputTokens, outputTokens),
-      };
-    }
-    case 'VECTOR_DB':
-      return { inputTokens: 0, outputTokens: 0, latencyMs: randomInt(40, 320), costInUSD: 0 };
-    case 'PROMPT_TEMPLATE':
-      return { inputTokens: 0, outputTokens: 0, latencyMs: randomInt(2, 25), costInUSD: 0 };
-    default: {
-      const _exhaustive: never = kind;
-      return _exhaustive;
-    }
-  }
-};
 
 /**
  * Reads the request body as UTF-8 text, or returns `null` as soon as it exceeds
@@ -176,44 +97,6 @@ const readBodyCapped = async (request: Request, maxBytes: number): Promise<strin
   return text + decoder.decode();
 };
 
-const buildEvent = (
-  runId: string,
-  nodeId: string,
-  state: NodeExecutionState,
-  patch: NodeTelemetryPatch,
-): TelemetryEvent => ({
-  runId: asRunId(runId),
-  nodeId: asNodeId(nodeId),
-  state,
-  emittedAt: Date.now(),
-  patch,
-});
-
-/** Builds the prompt (and optional system instruction) for an LLM-backed node. */
-const buildPrompt = (
-  kind: NexusNodeKind,
-  params: ExecutionNodeParams,
-  inputText: string,
-): { systemInstruction?: string; prompt: string } => {
-  if (kind === 'AGENT') {
-    return {
-      ...(params.systemPrompt !== undefined && params.systemPrompt.length > 0
-        ? { systemInstruction: params.systemPrompt }
-        : {}),
-      prompt: inputText,
-    };
-  }
-  if (kind === 'CLASSIFIER') {
-    const labels = params.labels !== undefined && params.labels.length > 0
-      ? params.labels.join(', ')
-      : 'general';
-    return {
-      prompt: `Classify the request into exactly one of: [${labels}]. Reply with only the label.\n\nRequest: ${inputText}`,
-    };
-  }
-  return { prompt: inputText };
-};
-
 export async function POST(request: Request): Promise<Response> {
   // Re-checked here although the proxy also gates this path: a run can incur
   // real model cost, so it must not depend on the proxy matcher alone.
@@ -239,95 +122,16 @@ export async function POST(request: Request): Promise<Response> {
   // Resolve the LLM provider from the server env (port/adapter). Absent provider
   // -> simulated fallback. Credentials live in the adapter, never client-exposed.
   const provider = resolveLlmProvider();
-  const realMode = provider !== null;
 
   // Aborted when the client goes away, however that surfaces: the request signal,
   // or the consumer cancelling the response stream (the only signal some runtimes
-  // deliver). Model calls and their retry delays are bound to it, so an abandoned
-  // run stops consuming the provider immediately instead of finishing its level.
+  // deliver). The engine binds model calls and their retry delays to it, so an
+  // abandoned run stops consuming the provider immediately.
   const runAbort = new AbortController();
   const abortRun = (): void => runAbort.abort();
   if (request.signal.aborted) abortRun();
   else request.signal.addEventListener('abort', abortRun, { once: true });
   const isAborted = (): boolean => runAbort.signal.aborted;
-
-  const levels = computeExecutionLevels(descriptor.nodes, descriptor.edges);
-  const kindById = new Map(descriptor.nodes.map((node) => [node.id, node.kind]));
-  const paramsById = new Map(descriptor.nodes.map((node) => [node.id, node.params ?? {}]));
-
-  const outgoing = new Map<string, string[]>();
-  const incoming = new Map<string, string[]>();
-  for (const edge of descriptor.edges) {
-    (outgoing.get(edge.source) ?? outgoing.set(edge.source, []).get(edge.source)!).push(edge.target);
-    (incoming.get(edge.target) ?? incoming.set(edge.target, []).get(edge.target)!).push(edge.source);
-  }
-
-  /** Transitive descendants of a node (the subgraph that cannot run if it fails). */
-  const descendantsOf = (start: string): Set<string> => {
-    const result = new Set<string>();
-    const stack = [...(outgoing.get(start) ?? [])];
-    while (stack.length > 0) {
-      const current = stack.pop()!;
-      if (result.has(current)) continue;
-      result.add(current);
-      for (const next of outgoing.get(current) ?? []) {
-        if (!result.has(next)) stack.push(next);
-      }
-    }
-    return result;
-  };
-
-  const outputById = new Map<string, string>();
-  const gatherInput = (nodeId: string): string => {
-    const predecessors = incoming.get(nodeId) ?? [];
-    const parts = predecessors
-      .map((predecessor) => outputById.get(predecessor) ?? '')
-      .filter((text) => text.length > 0);
-    return parts.length > 0 ? parts.join('\n\n') : SEED_INPUT;
-  };
-
-  const execute = async (
-    kind: NexusNodeKind,
-    params: ExecutionNodeParams,
-    inputText: string,
-  ): Promise<NodeExecutionResult> => {
-    if (kind === 'PROMPT_TEMPLATE') {
-      const rendered = renderTemplate(params.template ?? '', inputText);
-      return { outputText: rendered, inputTokens: 0, outputTokens: 0, latencyMs: 0, costInUSD: 0 };
-    }
-    if (kind === 'VECTOR_DB') {
-      return {
-        outputText: `Retrieved context for: ${truncate(inputText, 160)}`,
-        inputTokens: 0,
-        outputTokens: 0,
-        latencyMs: 0,
-        costInUSD: 0,
-      };
-    }
-
-    // LLM-backed kinds: AGENT, LLM_CORE, CLASSIFIER.
-    if (provider !== null) {
-      const { systemInstruction, prompt } = buildPrompt(kind, params, inputText);
-      const result = await provider.generate({
-        prompt,
-        ...(systemInstruction !== undefined ? { systemInstruction } : {}),
-        ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
-        ...(params.maxOutputTokens !== undefined ? { maxOutputTokens: params.maxOutputTokens } : {}),
-        ...(params.topP !== undefined ? { topP: params.topP } : {}),
-        signal: runAbort.signal,
-      });
-      return {
-        outputText: result.text,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        latencyMs: result.latencyMs,
-        costInUSD: computeTokenCost(provider.pricing, result.inputTokens, result.outputTokens),
-      };
-    }
-
-    const metrics = simulateMetrics(kind);
-    return { outputText: `Simulated ${kind} output.`, ...metrics };
-  };
 
   const encoder = new TextEncoder();
 
@@ -350,79 +154,18 @@ export async function POST(request: Request): Promise<Response> {
       };
 
       // Announce the execution mode up front so the client can label the run live.
-      enqueue(`event: mode\ndata: ${JSON.stringify({ mode: realMode ? 'real' : 'simulated' })}\n\n`);
+      enqueue(`event: mode\ndata: ${JSON.stringify({ mode: provider !== null ? 'real' : 'simulated' })}\n\n`);
       const heartbeat = setInterval(() => enqueue(': keep-alive\n\n'), HEARTBEAT_INTERVAL_MS);
 
-      let outcome: RunOutcome = 'completed';
-      const skipped = new Set<string>();
-
-      const runNode = async (nodeId: string): Promise<void> => {
-        if (isAborted()) return;
-
-        if (skipped.has(nodeId)) {
-          sendEvent(buildEvent(runId, nodeId, 'skipped', {}));
-          return;
-        }
-
-        const kind = kindById.get(nodeId) ?? 'PROMPT_TEMPLATE';
-        const params = paramsById.get(nodeId) ?? {};
-        const inputText = gatherInput(nodeId);
-
-        sendEvent(buildEvent(runId, nodeId, 'running', { inputPayload: { input: truncate(inputText, 280) } }));
-        if (!realMode) {
-          await sleep(RUNNING_PHASE_MS);
-          if (isAborted()) return;
-        }
-
-        if (failRate > 0 && Math.random() < failRate) {
-          sendEvent(
-            buildEvent(runId, nodeId, 'failed', {
-              error: { code: 'INJECTED_FAILURE', message: 'Injected fault (failRate).', originNodeId: null },
-            }),
-          );
-          outcome = 'failed';
-          for (const descendant of descendantsOf(nodeId)) skipped.add(descendant);
-          return;
-        }
-
-        try {
-          const result = await execute(kind, params, inputText);
-          if (isAborted()) return;
-          outputById.set(nodeId, result.outputText);
-          sendEvent(
-            buildEvent(runId, nodeId, 'completed', {
-              latencyMs: result.latencyMs,
-              inputTokens: result.inputTokens,
-              outputTokens: result.outputTokens,
-              costInUSD: result.costInUSD,
-              outputPayload: { output: truncate(result.outputText, 600) },
-            }),
-          );
-        } catch (error) {
-          if (isAborted()) return;
-          const code = error instanceof LlmError ? `LLM_${error.status}` : 'EXECUTION_ERROR';
-          sendEvent(
-            buildEvent(runId, nodeId, 'failed', {
-              error: {
-                code,
-                message: error instanceof Error ? error.message : 'Node execution failed.',
-                originNodeId: null,
-              },
-            }),
-          );
-          outcome = 'failed';
-          for (const descendant of descendantsOf(nodeId)) skipped.add(descendant);
-        }
-      };
-
-      // Execute level by level. Within a level the nodes are mutually independent
-      // (edges only cross to higher levels), so they run concurrently, at most
-      // MAX_LEVEL_CONCURRENCY at a time. `runNode` never rejects.
-      for (const level of levels) {
-        if (isAborted()) break;
-        await forEachWithConcurrency(level, MAX_LEVEL_CONCURRENCY, runNode);
-        if (!realMode && !isAborted()) await sleep(INTER_NODE_GAP_MS);
-      }
+      const { outcome } = await runPipeline({
+        runId,
+        descriptor,
+        input: DEFAULT_RUN_INPUT,
+        failRate,
+        provider,
+        signal: runAbort.signal,
+        onEvent: sendEvent,
+      });
 
       if (!isAborted()) sendDone(outcome);
 
