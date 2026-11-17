@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "name": "Support triage",
+  "description": "Routing and answer checks for the bundled demo pipeline (retrieval-augmented support assistant). Each case checks the intent classifier's label; some also check that the formatted answer addresses the topic.",
+  "cases": [
+    {
+      "id": "billing-double-charge",
+      "input": "Why was I charged twice this month?",
+      "checks": [{ "nodeId": "demo-classifier", "scorer": "equals", "expected": "billing" }]
+    },
+    {
+      "id": "billing-refund",
+      "input": "How can I get a refund for my annual plan?",
+      "checks": [
+        { "nodeId": "demo-classifier", "scorer": "equals", "expected": "billing" },
+        { "nodeId": "demo-formatter", "scorer": "contains", "expected": "refund" }
+      ]
+    },
+    {
+      "id": "billing-change-card",
+      "input": "Can I change the credit card on my account?",
+      "checks": [{ "nodeId": "demo-classifier", "scorer": "equals", "expected": "billing" }]
+    },
+    {
+      "id": "billing-invoice",
+      "input": "Where can I download last month's invoice?",
+      "checks": [
+        { "nodeId": "demo-classifier", "scorer": "equals", "expected": "billing" },
+        { "nodeId": "demo-formatter", "scorer": "contains", "expected": "invoice" }
+      ]
+    },
+    {
+      "id": "technical-upload-crash",
+      "input": "The app crashes every time I upload a file.",
+      "checks": [{ "nodeId": "demo-classifier", "scorer": "equals", "expected": "technical" }]
+    },
+    {
+      "id": "technical-login-error",
+      "input": "I get a 500 error when I try to log in.",
+      "checks": [{ "nodeId": "demo-classifier", "scorer": "equals", "expected": "technical" }]
+    },
+    {
+      "id": "technical-sync",
+      "input": "Sync between my phone and my laptop stopped working.",
+      "checks": [{ "nodeId": "demo-classifier", "scorer": "equals", "expected": "technical" }]
+    },
+    {
+      "id": "general-support-hours",
+      "input": "What are your support hours?",
+      "checks": [
+        { "nodeId": "demo-classifier", "scorer": "equals", "expected": "general" },
+        { "nodeId": "demo-formatter", "scorer": "contains", "expected": "hours" }
+      ]
+    },
+    {
+      "id": "general-headquarters",
+      "input": "Where is your company headquartered?",
+      "checks": [{ "nodeId": "demo-classifier", "scorer": "equals", "expected": "general" }]
+    },
+    {
+      "id": "general-human-agent",
+      "input": "Can I talk to a human agent?",
+      "checks": [{ "nodeId": "demo-classifier", "scorer": "equals", "expected": "general" }]
+    }
+  ]
+}
