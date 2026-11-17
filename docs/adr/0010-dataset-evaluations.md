@@ -34,7 +34,10 @@ Constraints found in the current code:
    scorer, and its expected value. The UI loads bundled datasets and imports files, and
    does not edit them.
 3. **Scorers.** Deterministic scorers (`equals`, `contains`, `regex`, `oneOf`) are pure
-   functions. An `llm_judge` scorer grades free-text output from 1 to 5 against a rubric
+   functions. Regex checks run on the server, so they are compiled and matched with
+   RE2 (`re2js`), which matches in linear time: a backtracking pattern such as
+   `^(a+)+$` cannot freeze the event loop. RE2 syntax excludes backreferences and
+   lookaround; such patterns are rejected when the dataset is parsed. An `llm_judge` scorer grades free-text output from 1 to 5 against a rubric
    and returns a reason, as validated JSON at temperature 0. The judged output is
    delimited and declared as data, so instructions inside it are not followed. In
    simulated mode judge checks are reported as not evaluated, never given an invented
@@ -44,7 +47,11 @@ Constraints found in the current code:
    result per case and a final summary. It reuses the access gate, the body limits,
    cancellation, and the keep-alive heartbeat of the run endpoint. Cases run
    sequentially, so a dataset stays inside the free tier's rate limits; nodes within a
-   case keep the per-level concurrency bound.
+   case keep the per-level concurrency bound. Consumption is bounded three ways: a
+   request may trigger at most 300 model calls (cases times LLM-backed nodes), only
+   one evaluation runs per server instance at a time (`429` otherwise), and the engine
+   fails any node whose input or rendered template would exceed 200,000 characters,
+   since templates and fan-in multiply text.
 5. **Results are comparable.** Each evaluation records a fingerprint of the pipeline
    configuration (prompts and sampling settings) next to its metrics, stored locally
    with a capped history. Two evaluations can be compared case by case, listing
