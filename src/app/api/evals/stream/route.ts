@@ -94,6 +94,7 @@ export async function POST(request: Request): Promise<Response> {
         datasetName: dataset.name,
         caseCount: dataset.cases.length,
         mode: provider !== null ? 'real' : 'simulated',
+        model: provider?.model ?? null,
       };
       send('started', started);
 

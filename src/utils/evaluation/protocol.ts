@@ -121,6 +121,12 @@ export interface EvalStartedFrame {
    * harness, not the pipeline; clients must say so.
    */
   readonly mode: ExecutionMode;
+  /**
+   * Model the server evaluates against; `null` in simulated mode. Recorded so that
+   * two evaluations of the same pipeline on different models are not mistaken for
+   * a prompt change.
+   */
+  readonly model: string | null;
 }
 
 export interface EvalCaseStartedFrame {

@@ -80,7 +80,7 @@ describe('POST /api/evals/stream', () => {
     ]);
 
     const [started] = dataOf<EvalStartedFrame>(events, 'started');
-    expect(started).toEqual({ evalId: 'eval_test', datasetName: 'Smoke', caseCount: 2, mode: 'simulated' });
+    expect(started).toEqual({ evalId: 'eval_test', datasetName: 'Smoke', caseCount: 2, mode: 'simulated', model: null });
 
     const results = dataOf<EvalCaseFrame>(events, 'case');
     expect(results.map((frame) => [frame.caseId, frame.verdict])).toEqual([
