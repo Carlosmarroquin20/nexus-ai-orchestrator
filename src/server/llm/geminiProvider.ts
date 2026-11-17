@@ -121,6 +121,7 @@ const callGemini = async (
     ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
     ...(request.maxOutputTokens !== undefined ? { maxOutputTokens: request.maxOutputTokens } : {}),
     ...(request.topP !== undefined ? { topP: request.topP } : {}),
+    ...(request.responseFormat === 'json' ? { responseMimeType: 'application/json' } : {}),
   };
   const payload = JSON.stringify({
     contents: [{ role: 'user', parts: [{ text: request.prompt }] }],

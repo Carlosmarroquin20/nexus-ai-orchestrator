@@ -19,6 +19,12 @@ export interface LlmGenerateRequest {
   readonly temperature?: number;
   readonly maxOutputTokens?: number;
   readonly topP?: number;
+  /**
+   * `json` asks the provider to constrain its output to a JSON document. Callers
+   * must still parse and validate it: the constraint reduces, but does not
+   * eliminate, malformed or off-schema output.
+   */
+  readonly responseFormat?: 'text' | 'json';
   readonly signal?: AbortSignal;
 }
 

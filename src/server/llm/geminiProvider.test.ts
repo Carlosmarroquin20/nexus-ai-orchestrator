@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { parseGeminiResponse } from '@/server/llm/geminiProvider';
+import { createGeminiProvider, parseGeminiResponse } from '@/server/llm/geminiProvider';
 import { LlmError } from '@/server/llm/types';
 
 describe('parseGeminiResponse', () => {
@@ -44,5 +44,39 @@ describe('parseGeminiResponse', () => {
 
   it('throws LlmError(422) when there are no candidates', () => {
     expect(() => parseGeminiResponse({}, 5)).toThrow(LlmError);
+  });
+});
+
+describe('createGeminiProvider request', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Captures the generateContent body the adapter sends for `request`. */
+  const sentBody = async (
+    request: Parameters<ReturnType<typeof createGeminiProvider>['generate']>[0],
+  ): Promise<Record<string, unknown>> => {
+    let body: Record<string, unknown> = {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return Response.json({
+          candidates: [{ content: { parts: [{ text: '{}' }] }, finishReason: 'STOP' }],
+        });
+      }),
+    );
+    await createGeminiProvider({ apiKey: 'test-key', model: 'test-model' }).generate(request);
+    return body;
+  };
+
+  it('asks for JSON output when the request requires it', async () => {
+    const body = await sentBody({ prompt: 'grade', responseFormat: 'json', temperature: 0 });
+    expect(body['generationConfig']).toEqual({ temperature: 0, responseMimeType: 'application/json' });
+  });
+
+  it('leaves the output format unconstrained by default', async () => {
+    const body = await sentBody({ prompt: 'hello' });
+    expect(body['generationConfig']).toEqual({});
   });
 });
