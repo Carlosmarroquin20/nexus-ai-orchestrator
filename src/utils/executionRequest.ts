@@ -37,7 +37,14 @@ export type ExecutionRequestParseResult =
   | { readonly ok: true; readonly request: NormalizedExecutionRequest }
   | { readonly ok: false; readonly code: ExecutionRequestRejection; readonly error: string };
 
-const reject = (code: ExecutionRequestRejection, error: string): ExecutionRequestParseResult => ({
+export type GraphDescriptorParseResult =
+  | { readonly ok: true; readonly graph: ExecutionDescriptor }
+  | { readonly ok: false; readonly code: ExecutionRequestRejection; readonly error: string };
+
+const reject = (
+  code: ExecutionRequestRejection,
+  error: string,
+): { readonly ok: false; readonly code: ExecutionRequestRejection; readonly error: string } => ({
   ok: false,
   code,
   error,
@@ -86,6 +93,23 @@ const parseDescriptor = (raw: unknown): ExecutionDescriptor | null => {
   return { nodes, edges };
 };
 
+/**
+ * Validates a graph payload against the engine's structural limits. Shared by
+ * every endpoint that executes a pipeline, so they enforce identical rules.
+ */
+export const parseGraphDescriptor = (raw: unknown): GraphDescriptorParseResult => {
+  const graph = parseDescriptor(raw);
+  if (graph === null) return reject('MALFORMED', 'Malformed graph descriptor.');
+  if (graph.nodes.length === 0) return reject('EMPTY_GRAPH', 'Graph has no nodes to execute.');
+  if (graph.nodes.length > MAX_EXECUTION_NODES) {
+    return reject(
+      'TOO_MANY_NODES',
+      `Graph exceeds the ${MAX_EXECUTION_NODES}-node execution limit.`,
+    );
+  }
+  return { ok: true, graph };
+};
+
 /** Narrows arbitrary JSON into a normalized run request, or a typed rejection. */
 export const parseExecutionRequest = (raw: unknown): ExecutionRequestParseResult => {
   if (!isRecord(raw)) return reject('MALFORMED', 'Request body must be a JSON object.');
@@ -95,15 +119,9 @@ export const parseExecutionRequest = (raw: unknown): ExecutionRequestParseResult
     return reject('MALFORMED', 'Missing or invalid "runId".');
   }
 
-  const graph = parseDescriptor(raw['graph']);
-  if (graph === null) return reject('MALFORMED', 'Malformed graph descriptor.');
-  if (graph.nodes.length === 0) return reject('EMPTY_GRAPH', 'Graph has no nodes to execute.');
-  if (graph.nodes.length > MAX_EXECUTION_NODES) {
-    return reject(
-      'TOO_MANY_NODES',
-      `Graph exceeds the ${MAX_EXECUTION_NODES}-node execution limit.`,
-    );
-  }
+  const parsedGraph = parseGraphDescriptor(raw['graph']);
+  if (!parsedGraph.ok) return parsedGraph;
+  const { graph } = parsedGraph;
 
   const rawFailRate = raw['failRate'];
   const failRate = isFiniteNumber(rawFailRate) ? Math.min(Math.max(rawFailRate, 0), 1) : 0;
