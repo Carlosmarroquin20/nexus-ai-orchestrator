@@ -1,6 +1,11 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { extractTemplateVariables, renderTemplate } from '@/utils/promptTemplate';
+import {
+  extractTemplateVariables,
+  renderTemplate,
+  renderedTemplateLength,
+} from '@/utils/promptTemplate';
 
 describe('extractTemplateVariables', () => {
   it('extracts unique variables, tolerating inner whitespace', () => {
@@ -33,6 +38,16 @@ describe('renderTemplate', () => {
   it('inserts replacement-pattern characters in the input verbatim', () => {
     const input = "costs $$5, ref $& and tail $' plus $1";
     expect(renderTemplate('Q: {{input}} END', input)).toBe(`Q: ${input} END`);
+  });
+
+  it('predicts the rendered length without rendering', () => {
+    const pieceArb = fc.oneof(fc.constantFrom('{{a}}', '{{ b.c }}', '{{', '}}', '$&'), fc.string());
+    fc.assert(
+      fc.property(fc.array(pieceArb, { maxLength: 12 }), fc.string(), (pieces, input) => {
+        const template = pieces.join('');
+        expect(renderedTemplateLength(template, input)).toBe(renderTemplate(template, input).length);
+      }),
+    );
   });
 
   it('is stable across repeated calls on the shared pattern', () => {

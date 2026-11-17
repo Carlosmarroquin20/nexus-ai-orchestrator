@@ -34,3 +34,17 @@ export const extractTemplateVariables = (template: string): string[] => {
  */
 export const renderTemplate = (template: string, input: string): string =>
   template.length === 0 ? input : template.replace(TEMPLATE_VARIABLE_PATTERN, () => input);
+
+/**
+ * Length `renderTemplate(template, input)` would produce, computed without
+ * building the string. Every reference multiplies the input, so a short template
+ * can render to gigabytes; callers bound the result before rendering it.
+ */
+export const renderedTemplateLength = (template: string, input: string): number => {
+  if (template.length === 0) return input.length;
+  let length = template.length;
+  for (const match of template.matchAll(TEMPLATE_VARIABLE_PATTERN)) {
+    length += input.length - match[0].length;
+  }
+  return length;
+};

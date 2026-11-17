@@ -30,7 +30,7 @@ import {
 import { LlmError, type LlmProvider } from '@/server/llm/types';
 import { forEachWithConcurrency } from '@/utils/concurrency';
 import { computeExecutionLevels } from '@/utils/graphValidation';
-import { renderTemplate } from '@/utils/promptTemplate';
+import { renderTemplate, renderedTemplateLength } from '@/utils/promptTemplate';
 import { computeTokenCost } from '@/utils/telemetry';
 
 /**
@@ -49,6 +49,29 @@ const INTER_NODE_GAP_MS = 110;
 /** Display bounds for the payloads carried by telemetry events. */
 const INPUT_PREVIEW_CHARS = 280;
 const OUTPUT_PREVIEW_CHARS = 600;
+
+/**
+ * Upper bound on the text a node receives or a template produces. Without it,
+ * text grows without limit: a template multiplies its input by its number of
+ * references, and a node concatenates the outputs of all its predecessors, so a
+ * request of a few kilobytes could exhaust the server's memory. A node that would
+ * exceed the bound fails instead of building the text.
+ */
+export const MAX_NODE_TEXT_LENGTH = 200_000;
+
+/** Separator between predecessor outputs in a node's combined input. */
+const INPUT_SEPARATOR = '\n\n';
+
+/** A node-level limit was hit; carries the failure code reported for the node. */
+class NodeLimitError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'NodeLimitError';
+  }
+}
 
 export interface PipelineRunOptions {
   /** Correlation id stamped on every emitted event. */
@@ -210,11 +233,16 @@ export const runPipeline = async (options: PipelineRunOptions): Promise<Pipeline
 
   const records = new Map<string, NodeRunRecord>();
   const outputOf = (nodeId: string): string => records.get(nodeId)?.outputText ?? '';
-  const gatherInput = (nodeId: string): string => {
+  /** The node's combined input, or `null` when it would exceed `MAX_NODE_TEXT_LENGTH`. */
+  const gatherInput = (nodeId: string): string | null => {
     const parts = (incoming.get(nodeId) ?? [])
       .map(outputOf)
       .filter((text) => text.length > 0);
-    return parts.length > 0 ? parts.join('\n\n') : input;
+    if (parts.length === 0) return input;
+    const length =
+      parts.reduce((sum, text) => sum + text.length, 0) +
+      INPUT_SEPARATOR.length * (parts.length - 1);
+    return length > MAX_NODE_TEXT_LENGTH ? null : parts.join(INPUT_SEPARATOR);
   };
 
   const execute = async (
@@ -223,7 +251,14 @@ export const runPipeline = async (options: PipelineRunOptions): Promise<Pipeline
     inputText: string,
   ): Promise<NodeExecutionResult> => {
     if (kind === 'PROMPT_TEMPLATE') {
-      const rendered = renderTemplate(params.template ?? '', inputText);
+      const template = params.template ?? '';
+      if (renderedTemplateLength(template, inputText) > MAX_NODE_TEXT_LENGTH) {
+        throw new NodeLimitError(
+          'OUTPUT_TOO_LARGE',
+          `The rendered template would exceed ${MAX_NODE_TEXT_LENGTH} characters.`,
+        );
+      }
+      const rendered = renderTemplate(template, inputText);
       return { outputText: rendered, inputTokens: 0, outputTokens: 0, latencyMs: 0, costInUSD: 0 };
     }
     if (kind === 'VECTOR_DB') {
@@ -298,6 +333,14 @@ export const runPipeline = async (options: PipelineRunOptions): Promise<Pipeline
     const kind = kindById.get(nodeId) ?? 'PROMPT_TEMPLATE';
     const params = paramsById.get(nodeId) ?? {};
     const inputText = gatherInput(nodeId);
+    if (inputText === null) {
+      fail(
+        nodeId,
+        'INPUT_TOO_LARGE',
+        `The combined input from upstream nodes exceeds ${MAX_NODE_TEXT_LENGTH} characters.`,
+      );
+      return;
+    }
 
     emit(nodeId, 'running', { inputPayload: { input: truncate(inputText, INPUT_PREVIEW_CHARS) } });
     if (!realMode) {
@@ -319,7 +362,11 @@ export const runPipeline = async (options: PipelineRunOptions): Promise<Pipeline
       if (isAborted()) return;
       fail(
         nodeId,
-        error instanceof LlmError ? `LLM_${error.status}` : 'EXECUTION_ERROR',
+        error instanceof NodeLimitError
+          ? error.code
+          : error instanceof LlmError
+            ? `LLM_${error.status}`
+            : 'EXECUTION_ERROR',
         error instanceof Error ? error.message : 'Node execution failed.',
       );
       return;

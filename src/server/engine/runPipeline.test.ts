@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { type PipelineRunOptions, runPipeline } from '@/server/engine/runPipeline';
+import {
+  MAX_NODE_TEXT_LENGTH,
+  type PipelineRunOptions,
+  runPipeline,
+} from '@/server/engine/runPipeline';
 import { LlmError, type LlmGenerateRequest, type LlmProvider } from '@/server/llm/types';
 import type { ExecutionDescriptor } from '@/types/execution';
 import type { TelemetryEvent } from '@/types/graph';
@@ -150,6 +154,56 @@ describe('runPipeline: with a provider', () => {
     expect(nodes.get('a')!.error?.code).toBe('INJECTED_FAILURE');
     expect(nodes.get('b')!.state).toBe('skipped');
     expect(provider.requests).toHaveLength(0);
+  });
+});
+
+describe('runPipeline: text bounds', () => {
+  it('fails a template that would multiply its input past the bound, without rendering it', async () => {
+    // 1,000 references to a 20,000-character input would render 20 million characters.
+    const { events, result } = run({
+      provider: fakeProvider(() => 'never'),
+      input: 'y'.repeat(20_000),
+      descriptor: chain(
+        ['bomb', 'PROMPT_TEMPLATE', { template: '{{x}}'.repeat(1_000) }],
+        ['after', 'AGENT'],
+      ),
+    });
+    const { outcome, nodes } = await result;
+
+    expect(outcome).toBe('failed');
+    expect(nodes.get('bomb')!.error?.code).toBe('OUTPUT_TOO_LARGE');
+    expect(nodes.get('after')!.state).toBe('skipped');
+    expect(trace(events)).toEqual(['bomb:running', 'bomb:failed', 'after:skipped']);
+  });
+
+  it('fails a node whose combined upstream input exceeds the bound', async () => {
+    const half = 'z'.repeat(MAX_NODE_TEXT_LENGTH / 2 + 1);
+    const descriptor: ExecutionDescriptor = {
+      nodes: [
+        { id: 'left', kind: 'LLM_CORE', params: {} },
+        { id: 'right', kind: 'LLM_CORE', params: {} },
+        { id: 'join', kind: 'PROMPT_TEMPLATE', params: {} },
+      ],
+      edges: [
+        { source: 'left', target: 'join' },
+        { source: 'right', target: 'join' },
+      ],
+    };
+    const { result } = run({ provider: fakeProvider(() => half), descriptor });
+    const { nodes } = await result;
+
+    expect(nodes.get('left')!.state).toBe('completed');
+    expect(nodes.get('join')!.error?.code).toBe('INPUT_TOO_LARGE');
+  });
+
+  it('accepts text right at the bound', async () => {
+    const { result } = run({
+      input: 'w'.repeat(MAX_NODE_TEXT_LENGTH),
+      provider: fakeProvider(() => 'never'),
+      descriptor: chain(['echo', 'PROMPT_TEMPLATE', { template: '{{x}}' }]),
+    });
+    const { nodes } = await result;
+    expect(nodes.get('echo')!.outputText).toHaveLength(MAX_NODE_TEXT_LENGTH);
   });
 });
 
