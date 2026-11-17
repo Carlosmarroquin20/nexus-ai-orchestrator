@@ -30,6 +30,11 @@ export const MAX_CASE_INPUT_LENGTH = 20_000;
  * guarding against backtracking.
  */
 export const MAX_REGEX_PATTERN_LENGTH = 200;
+/** Bound on the grading criteria of an LLM judge check; they become part of the judge prompt. */
+export const MAX_JUDGE_CRITERIA_LENGTH = 2_000;
+/** The LLM judge grades on an integer scale from 1 (fails) to 5 (fully meets the criteria). */
+export const JUDGE_SCALE = { min: 1, max: 5 } as const;
+const DEFAULT_JUDGE_MIN_SCORE = 4;
 
 interface CheckBase {
   /** Node whose output the check inspects. */
@@ -61,7 +66,19 @@ export interface OneOfCheck extends CheckBase {
   readonly expected: readonly string[];
 }
 
-export type EvalCheck = EqualsCheck | ContainsCheck | RegexCheck | OneOfCheck;
+/**
+ * Free-text output graded by an LLM judge against `criteria`, on `JUDGE_SCALE`.
+ * Passes when the grade is at least `minScore`.
+ */
+export interface LlmJudgeCheck extends CheckBase {
+  readonly scorer: 'llm_judge';
+  readonly criteria: string;
+  readonly minScore: number;
+}
+
+/** Checks scored by pure functions, without a model. */
+export type DeterministicCheck = EqualsCheck | ContainsCheck | RegexCheck | OneOfCheck;
+export type EvalCheck = DeterministicCheck | LlmJudgeCheck;
 export type ScorerKind = EvalCheck['scorer'];
 
 export interface EvalCase {
@@ -144,9 +161,30 @@ const parseCheck = (raw: unknown, where: string): EvalCheck => {
       if (!compiled.ok) throw new DatasetError(`${where}.${compiled.field} ${compiled.error}`);
       return { scorer, nodeId, pattern, flags };
     }
+    case 'llm_judge': {
+      const criteria = nonEmptyString(raw['criteria'], `${where}.criteria`);
+      if (criteria.length > MAX_JUDGE_CRITERIA_LENGTH) {
+        throw new DatasetError(
+          `${where}.criteria exceeds ${MAX_JUDGE_CRITERIA_LENGTH} characters.`,
+        );
+      }
+      // Only an absent field means the default; an explicit null is malformed.
+      const rawMinScore = raw['minScore'] === undefined ? DEFAULT_JUDGE_MIN_SCORE : raw['minScore'];
+      if (
+        typeof rawMinScore !== 'number' ||
+        !Number.isInteger(rawMinScore) ||
+        rawMinScore < JUDGE_SCALE.min ||
+        rawMinScore > JUDGE_SCALE.max
+      ) {
+        throw new DatasetError(
+          `${where}.minScore must be an integer from ${JUDGE_SCALE.min} to ${JUDGE_SCALE.max}.`,
+        );
+      }
+      return { scorer, nodeId, criteria, minScore: rawMinScore };
+    }
     default:
       throw new DatasetError(
-        `${where}.scorer must be one of equals, contains, regex, oneOf.`,
+        `${where}.scorer must be one of equals, contains, regex, oneOf, llm_judge.`,
       );
   }
 };

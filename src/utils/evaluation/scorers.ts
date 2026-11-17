@@ -9,7 +9,7 @@
  * may care about exactly that decoration.
  */
 
-import { type EvalCase, type EvalCheck } from './dataset';
+import { type DeterministicCheck, type EvalCase, type EvalCheck, type LlmJudgeCheck } from './dataset';
 import { normalizeOutput } from './normalize';
 import { compileSafeRegex } from './safeRegex';
 
@@ -47,7 +47,7 @@ const preview = (text: string): string => {
 };
 
 const verdict = (
-  check: EvalCheck,
+  check: DeterministicCheck,
   actual: string,
   passed: boolean,
   failure: string,
@@ -59,17 +59,18 @@ const verdict = (
   score: null,
 });
 
-/** Scores one check against the output of its node (`null` when there is none). */
-export const scoreCheck = (check: EvalCheck, output: string | null): CheckResult => {
-  if (output === null) {
-    return {
-      check,
-      status: 'error',
-      actual: null,
-      detail: `Node "${check.nodeId}" produced no output (failed, skipped, or not reached).`,
-      score: null,
-    };
-  }
+/** The verdict for any check whose node produced no output: not evaluable, counted against. */
+export const noOutputResult = (check: EvalCheck): CheckResult => ({
+  check,
+  status: 'error',
+  actual: null,
+  detail: `Node "${check.nodeId}" produced no output (failed, skipped, or not reached).`,
+  score: null,
+});
+
+/** Scores one deterministic check against the output of its node (`null` when there is none). */
+export const scoreCheck = (check: DeterministicCheck, output: string | null): CheckResult => {
+  if (output === null) return noOutputResult(check);
 
   switch (check.scorer) {
     case 'equals':
@@ -131,11 +132,34 @@ export const scoreCheck = (check: EvalCheck, output: string | null): CheckResult
 };
 
 /**
+ * Grades one `llm_judge` check. Supplied by the caller, which owns the model
+ * connection; `input` is the case input, which the judge sees as the question.
+ */
+export type JudgeCheckFn = (
+  check: LlmJudgeCheck,
+  output: string | null,
+  input: string,
+) => Promise<CheckResult>;
+
+/**
  * Scores every check of a case. `outputs` maps node ids to their full output, or
  * to `null` when the node did not complete; a node absent from the map was not
- * reached.
+ * reached. Checks are scored one at a time, in dataset order: judge calls share
+ * the provider's rate limit with the pipeline itself.
  */
-export const scoreCase = (
+export const scoreCase = async (
   evalCase: EvalCase,
   outputs: ReadonlyMap<string, string | null>,
-): CheckResult[] => evalCase.checks.map((check) => scoreCheck(check, outputs.get(check.nodeId) ?? null));
+  judge: JudgeCheckFn,
+): Promise<CheckResult[]> => {
+  const results: CheckResult[] = [];
+  for (const check of evalCase.checks) {
+    const output = outputs.get(check.nodeId) ?? null;
+    results.push(
+      check.scorer === 'llm_judge'
+        ? await judge(check, output, evalCase.input)
+        : scoreCheck(check, output),
+    );
+  }
+  return results;
+};

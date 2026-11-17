@@ -61,9 +61,18 @@ const reject = (code: EvaluationRejection, error: string): EvaluationRequestPars
   error,
 });
 
-/** Model calls an evaluation of `dataset` against `graph` would trigger at most. */
-export const countModelCalls = (graph: ExecutionDescriptor, dataset: EvalDataset): number =>
-  graph.nodes.filter((node) => LLM_BACKED_KINDS.has(node.kind)).length * dataset.cases.length;
+/**
+ * Model calls an evaluation of `dataset` against `graph` would trigger at most:
+ * every LLM-backed node once per case, plus one judge call per `llm_judge` check.
+ */
+export const countModelCalls = (graph: ExecutionDescriptor, dataset: EvalDataset): number => {
+  const pipelineCalls =
+    graph.nodes.filter((node) => LLM_BACKED_KINDS.has(node.kind)).length * dataset.cases.length;
+  const judgeCalls = dataset.cases
+    .flatMap((evalCase) => evalCase.checks)
+    .filter((check) => check.scorer === 'llm_judge').length;
+  return pipelineCalls + judgeCalls;
+};
 
 /** Narrows arbitrary JSON into an evaluation request, or a typed rejection. */
 export const parseEvaluationRequest = (raw: unknown): EvaluationRequestParseResult => {
@@ -144,7 +153,17 @@ export interface EvalCaseFrame {
   readonly checks: readonly EvalCheckFrame[];
 }
 
-export type EvalSummaryFrame = EvalSummary;
+export interface JudgeUsageTotals {
+  readonly calls: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly costInUSD: number;
+}
+
+/** The summary metrics plus the cost of grading, which the pipeline metrics exclude. */
+export interface EvalSummaryFrame extends EvalSummary {
+  readonly judgeUsage: JudgeUsageTotals;
+}
 
 export interface EvalDoneFrame {
   readonly status: 'completed' | 'cancelled';

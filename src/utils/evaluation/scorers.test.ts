@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EvalCase, EvalCheck } from '@/utils/evaluation/dataset';
+import type { DeterministicCheck, EvalCase } from '@/utils/evaluation/dataset';
 import { normalizeOutput } from '@/utils/evaluation/normalize';
-import { MAX_REGEX_SUBJECT_LENGTH, scoreCase, scoreCheck } from '@/utils/evaluation/scorers';
+import {
+  type JudgeCheckFn,
+  MAX_REGEX_SUBJECT_LENGTH,
+  scoreCase,
+  scoreCheck,
+} from '@/utils/evaluation/scorers';
 
-const equals = (expected: string): EvalCheck => ({ scorer: 'equals', nodeId: 'n', expected });
-const contains = (expected: string): EvalCheck => ({ scorer: 'contains', nodeId: 'n', expected });
-const oneOf = (...expected: string[]): EvalCheck => ({ scorer: 'oneOf', nodeId: 'n', expected });
-const regex = (pattern: string, flags = ''): EvalCheck => ({ scorer: 'regex', nodeId: 'n', pattern, flags });
+const equals = (expected: string): DeterministicCheck => ({ scorer: 'equals', nodeId: 'n', expected });
+const contains = (expected: string): DeterministicCheck => ({ scorer: 'contains', nodeId: 'n', expected });
+const oneOf = (...expected: string[]): DeterministicCheck => ({ scorer: 'oneOf', nodeId: 'n', expected });
+const regex = (pattern: string, flags = ''): DeterministicCheck => ({ scorer: 'regex', nodeId: 'n', pattern, flags });
 
-const statusOf = (check: EvalCheck, output: string | null): string => scoreCheck(check, output).status;
+const statusOf = (check: DeterministicCheck, output: string | null): string => scoreCheck(check, output).status;
 
 describe('normalizeOutput', () => {
   it('ignores case, surrounding decoration, and repeated whitespace', () => {
@@ -88,20 +93,39 @@ describe('scoreCase', () => {
     input: 'Why was I charged twice?',
     checks: [
       { scorer: 'equals', nodeId: 'classifier', expected: 'billing' },
+      { scorer: 'llm_judge', nodeId: 'answer', criteria: 'Explains the charge.', minScore: 4 },
       { scorer: 'contains', nodeId: 'answer', expected: 'refund' },
       { scorer: 'contains', nodeId: 'unreached', expected: 'x' },
     ],
   };
 
-  it('scores each check against its own node and treats missing nodes as no output', () => {
-    const results = scoreCase(
+  it('scores each check against its own node, delegating judge checks in order', async () => {
+    const calls: string[] = [];
+    const judge: JudgeCheckFn = async (check, output, input) => {
+      calls.push(`${check.nodeId}|${output}|${input}`);
+      return { check, status: 'passed', actual: output, detail: 'Score 5/5', score: 5 };
+    };
+    const results = await scoreCase(
       evalCase,
       new Map<string, string | null>([
         ['classifier', 'Billing'],
-        ['answer', null],
+        ['answer', 'We will refund you.'],
       ]),
+      judge,
     );
-    expect(results.map((result) => result.status)).toEqual(['passed', 'error', 'error']);
-    expect(results[0]!.actual).toBe('Billing');
+
+    expect(results.map((result) => result.status)).toEqual(['passed', 'passed', 'passed', 'error']);
+    expect(results.map((result) => result.score)).toEqual([null, 5, null, null]);
+    expect(calls).toEqual(['answer|We will refund you.|Why was I charged twice?']);
+  });
+
+  it('hands the judge a missing output as null', async () => {
+    const seen: Array<string | null> = [];
+    const judge: JudgeCheckFn = async (check, output) => {
+      seen.push(output);
+      return { check, status: 'error', actual: null, detail: 'no output', score: null };
+    };
+    await scoreCase(evalCase, new Map(), judge);
+    expect(seen).toEqual([null]);
   });
 });

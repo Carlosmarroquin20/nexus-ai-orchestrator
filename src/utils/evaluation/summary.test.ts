@@ -16,7 +16,9 @@ const result = (
       ? { scorer, nodeId, pattern: 'x', flags: '' }
       : scorer === 'oneOf'
         ? { scorer, nodeId, expected: ['x'] }
-        : { scorer, nodeId, expected: 'x' },
+        : scorer === 'llm_judge'
+          ? { scorer, nodeId, criteria: 'x', minScore: 4 }
+          : { scorer, nodeId, expected: 'x' },
   status,
   actual: status === 'error' ? null : 'x',
   detail: '',

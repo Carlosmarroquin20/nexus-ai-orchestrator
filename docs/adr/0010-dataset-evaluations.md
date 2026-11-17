@@ -37,11 +37,19 @@ Constraints found in the current code:
    functions. Regex checks run on the server, so they are compiled and matched with
    RE2 (`re2js`), which matches in linear time: a backtracking pattern such as
    `^(a+)+$` cannot freeze the event loop. RE2 syntax excludes backreferences and
-   lookaround; such patterns are rejected when the dataset is parsed. An `llm_judge` scorer grades free-text output from 1 to 5 against a rubric
-   and returns a reason, as validated JSON at temperature 0. The judged output is
-   delimited and declared as data, so instructions inside it are not followed. In
-   simulated mode judge checks are reported as not evaluated, never given an invented
-   score.
+   lookaround; such patterns are rejected when the dataset is parsed.
+   An `llm_judge` check grades free-text output from 1 to 5 against criteria written in
+   the dataset and passes at a minimum score (4 by default). The judge replies with
+   `{score, reason}`, requested as JSON at temperature 0 and validated before use; an
+   off-schema reply is an error, never a guessed score. The graded answer is untrusted
+   model output, so the prompt declares it as data and fences each block with tags
+   carrying a fresh random nonce, which the answer cannot close. This reduces, but
+   cannot eliminate, the chance that instructions inside the answer sway the grade;
+   every grade therefore ships with its reason for audit. Without a model (simulated
+   mode) judge checks are reported as `skipped`: they count neither for nor against any
+   rate, and a case with only skipped checks has no verdict. Judge calls count toward
+   the model-call budget, and their cost is reported apart from the pipeline's, so case
+   metrics describe the system under test.
 4. **Evaluations run on the server.** `POST /api/evals/stream` runs the cases one after
    another through the shared engine, scores them against full outputs, and streams one
    result per case and a final summary. It reuses the access gate, the body limits,

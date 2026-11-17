@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EVAL_DATASET_SCHEMA_VERSION } from '@/utils/evaluation/dataset';
-import type { EvalCaseFrame, EvalStartedFrame } from '@/utils/evaluation/protocol';
-import type { EvalSummary } from '@/utils/evaluation/summary';
+import type { EvalCaseFrame, EvalStartedFrame, EvalSummaryFrame } from '@/utils/evaluation/protocol';
 import { INITIAL_SSE_STATE, type SseEvent, feedSse } from '@/utils/sseParser';
 
 import * as route from './route';
@@ -96,9 +95,31 @@ describe('POST /api/evals/stream', () => {
       score: null,
     });
 
-    const [summary] = dataOf<EvalSummary>(events, 'summary');
+    const [summary] = dataOf<EvalSummaryFrame>(events, 'summary');
     expect(summary!.cases).toEqual({ passed: 1, total: 2, rate: 0.5 });
+    expect(summary!.judgeUsage).toEqual({ calls: 0, inputTokens: 0, outputTokens: 0, costInUSD: 0 });
     expect(dataOf(events, 'done')).toEqual([{ status: 'completed' }]);
+  });
+
+  it('reports judge checks as skipped in simulated mode', async () => {
+    const judged = {
+      ...dataset,
+      cases: [
+        {
+          id: 'judged',
+          input: 'hello',
+          checks: [{ nodeId: 'llm', scorer: 'llm_judge', criteria: 'Answers the greeting.' }],
+        },
+      ],
+    };
+    const events = await readEvents(await post(body({ dataset: judged })));
+
+    const [result] = dataOf<EvalCaseFrame>(events, 'case');
+    expect(result!.verdict).toBe('skipped');
+    expect(result!.checks[0]).toMatchObject({ scorer: 'llm_judge', status: 'skipped', score: null });
+    const [summary] = dataOf<EvalSummaryFrame>(events, 'summary');
+    expect(summary!.skippedChecks).toBe(1);
+    expect(summary!.cases.total).toBe(0);
   });
 
   it('maps each rejection to its status', async () => {

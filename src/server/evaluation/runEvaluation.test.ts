@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { JUDGE_SYSTEM_INSTRUCTION } from '@/server/evaluation/judge';
 import { type EvaluationOptions, runEvaluation } from '@/server/evaluation/runEvaluation';
 import { LlmError, type LlmGenerateRequest, type LlmProvider } from '@/server/llm/types';
 import type { ExecutionDescriptor } from '@/types/execution';
@@ -79,6 +80,71 @@ const evaluate = (overrides: Partial<EvaluationOptions> = {}) => {
   });
   return { log, result };
 };
+
+describe('runEvaluation: LLM judge', () => {
+  const judgedDataset: EvalDataset = {
+    version: 1,
+    name: 'Judged',
+    cases: [
+      {
+        id: 'charge',
+        input: 'Why was I charged twice?',
+        checks: [
+          { scorer: 'equals', nodeId: 'cls', expected: 'billing' },
+          { scorer: 'llm_judge', nodeId: 'answer', criteria: 'Routes billing questions.', minScore: 4 },
+        ],
+      },
+      {
+        id: 'crash',
+        input: 'The app crashes on upload.',
+        checks: [{ scorer: 'llm_judge', nodeId: 'answer', criteria: 'Routes billing questions.', minScore: 4 }],
+      },
+    ],
+  };
+
+  /** Classifies like `scriptedClassifier`, and grades: 5 when the answer says Billing, else 2. */
+  const classifierAndJudge = (): LlmProvider => ({
+    id: 'scripted',
+    model: 'scripted',
+    pricing: { inputPerMillionUSD: 1_000_000, outputPerMillionUSD: 0 },
+    generate: async (request) => {
+      if (request.systemInstruction === JUDGE_SYSTEM_INSTRUCTION) {
+        const score = request.prompt.includes('Routed to Billing') ? 5 : 2;
+        return { text: JSON.stringify({ score, reason: 'scripted' }), inputTokens: 10, outputTokens: 1, latencyMs: 1 };
+      }
+      const text = request.prompt.includes('charged') ? 'Billing.' : 'technical';
+      return { text, inputTokens: 3, outputTokens: 2, latencyMs: 1 };
+    },
+  });
+
+  it('grades judge checks and keeps their cost apart from the pipeline cost', async () => {
+    const { cases, summary, judgeUsage } = await evaluate({
+      dataset: judgedDataset,
+      provider: classifierAndJudge(),
+    }).result;
+
+    expect(cases.map((evaluated) => evaluated.score.checks.map((check) => [check.status, check.score]))).toEqual([
+      [
+        ['passed', null],
+        ['passed', 5],
+      ],
+      [['failed', 2]],
+    ]);
+    expect(summary.judgeScore).toEqual({ mean: 3.5, count: 2 });
+    // The case cost covers the pipeline's classifier call only (3 input tokens at $1 each).
+    expect(cases[0]!.score.costInUSD).toBeCloseTo(3, 10);
+    expect(judgeUsage).toEqual({ calls: 2, inputTokens: 20, outputTokens: 2, costInUSD: 20 });
+  });
+
+  it('skips judge checks in simulated mode and leaves them out of the rates', async () => {
+    const { cases, summary, judgeUsage } = await evaluate({ dataset: judgedDataset, provider: null }).result;
+
+    expect(cases[1]!.score.checks[0]!.status).toBe('skipped');
+    expect(summary.skippedChecks).toBe(2);
+    expect(summary.cases.total).toBe(1);
+    expect(judgeUsage.calls).toBe(0);
+  });
+});
 
 describe('runEvaluation', () => {
   it('runs every case in order and scores it against the full outputs', async () => {

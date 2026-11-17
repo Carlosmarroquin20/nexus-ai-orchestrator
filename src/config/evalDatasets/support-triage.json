@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Support triage",
-  "description": "Routing and answer checks for the bundled demo pipeline (retrieval-augmented support assistant). Each case checks the intent classifier's label; some also check that the formatted answer addresses the topic.",
+  "description": "Routing and answer checks for the bundled demo pipeline (retrieval-augmented support assistant). Each case checks the intent classifier's label; some also check that the formatted answer addresses the topic, and three are graded by the LLM judge, which is skipped in simulated mode.",
   "cases": [
     {
       "id": "billing-double-charge",
@@ -13,7 +13,8 @@
       "input": "How can I get a refund for my annual plan?",
       "checks": [
         { "nodeId": "demo-classifier", "scorer": "equals", "expected": "billing" },
-        { "nodeId": "demo-formatter", "scorer": "contains", "expected": "refund" }
+        { "nodeId": "demo-formatter", "scorer": "contains", "expected": "refund" },
+        { "nodeId": "demo-formatter", "scorer": "llm_judge", "criteria": "Tells the customer how to request a refund for an annual plan, or where to find the refund policy, without inventing amounts, dates, or guarantees." }
       ]
     },
     {
@@ -32,7 +33,10 @@
     {
       "id": "technical-upload-crash",
       "input": "The app crashes every time I upload a file.",
-      "checks": [{ "nodeId": "demo-classifier", "scorer": "equals", "expected": "technical" }]
+      "checks": [
+        { "nodeId": "demo-classifier", "scorer": "equals", "expected": "technical" },
+        { "nodeId": "demo-formatter", "scorer": "llm_judge", "criteria": "Offers concrete troubleshooting steps for a crash during file upload (for example checking the file size or format, updating the app, or contacting support) and does not blame the customer." }
+      ]
     },
     {
       "id": "technical-login-error",
@@ -60,7 +64,10 @@
     {
       "id": "general-human-agent",
       "input": "Can I talk to a human agent?",
-      "checks": [{ "nodeId": "demo-classifier", "scorer": "equals", "expected": "general" }]
+      "checks": [
+        { "nodeId": "demo-classifier", "scorer": "equals", "expected": "general" },
+        { "nodeId": "demo-formatter", "scorer": "llm_judge", "criteria": "Explains how the customer can reach a human support agent, in a polite and helpful tone." }
+      ]
     }
   ]
 }

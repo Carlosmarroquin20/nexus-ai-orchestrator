@@ -11,9 +11,11 @@
  */
 
 import { runPipeline } from '@/server/engine/runPipeline';
+import { createJudge } from '@/server/evaluation/judge';
 import type { LlmProvider } from '@/server/llm/types';
 import type { ExecutionDescriptor, RunOutcome } from '@/types/execution';
 import type { EvalDataset } from '@/utils/evaluation/dataset';
+import type { JudgeUsageTotals } from '@/utils/evaluation/protocol';
 import { scoreCase } from '@/utils/evaluation/scorers';
 import { type CaseScore, type EvalSummary, summarizeEvaluation } from '@/utils/evaluation/summary';
 
@@ -43,12 +45,28 @@ export interface EvaluationResult {
   readonly cases: readonly EvaluatedCase[];
   /** Metrics over the scored cases only. */
   readonly summary: EvalSummary;
+  /** Cost of grading with the LLM judge, kept apart from the pipeline's own cost. */
+  readonly judgeUsage: JudgeUsageTotals;
 }
 
 /** Runs and scores every case. Never rejects. */
 export const runEvaluation = async (options: EvaluationOptions): Promise<EvaluationResult> => {
   const { evalId, graph, dataset, provider, signal, onCaseStarted, onCaseScored } = options;
   const cases: EvaluatedCase[] = [];
+
+  // Judge calls are evaluation overhead: case duration, cost, and tokens describe
+  // the pipeline under test, and grading is accounted separately.
+  const judgeUsage = { calls: 0, inputTokens: 0, outputTokens: 0, costInUSD: 0 };
+  const judge = createJudge({
+    provider,
+    signal,
+    onUsage: (usage) => {
+      judgeUsage.calls += 1;
+      judgeUsage.inputTokens += usage.inputTokens;
+      judgeUsage.outputTokens += usage.outputTokens;
+      judgeUsage.costInUSD += usage.costInUSD;
+    },
+  });
 
   for (const [index, evalCase] of dataset.cases.entries()) {
     if (signal.aborted) break;
@@ -66,6 +84,15 @@ export const runEvaluation = async (options: EvaluationOptions): Promise<Evaluat
       onEvent: () => undefined,
     });
     if (run.outcome === 'cancelled') break;
+    const durationMs = Date.now() - startedAt;
+
+    const checks = await scoreCase(
+      evalCase,
+      new Map([...run.nodes].map(([nodeId, record]) => [nodeId, record.outputText])),
+      judge,
+    );
+    // Cancelled while judging: the case is incomplete and is not reported.
+    if (signal.aborted) break;
 
     const records = [...run.nodes.values()];
     const evaluated: EvaluatedCase = {
@@ -73,11 +100,8 @@ export const runEvaluation = async (options: EvaluationOptions): Promise<Evaluat
       runOutcome: run.outcome,
       score: {
         caseId: evalCase.id,
-        checks: scoreCase(
-          evalCase,
-          new Map([...run.nodes].map(([nodeId, record]) => [nodeId, record.outputText])),
-        ),
-        durationMs: Date.now() - startedAt,
+        checks,
+        durationMs,
         costInUSD: records.reduce((sum, record) => sum + record.costInUSD, 0),
         totalTokens: records.reduce(
           (sum, record) => sum + record.inputTokens + record.outputTokens,
@@ -93,5 +117,6 @@ export const runEvaluation = async (options: EvaluationOptions): Promise<Evaluat
     outcome: signal.aborted ? 'cancelled' : 'completed',
     cases,
     summary: summarizeEvaluation(cases.map((evaluated) => evaluated.score)),
+    judgeUsage,
   };
 };

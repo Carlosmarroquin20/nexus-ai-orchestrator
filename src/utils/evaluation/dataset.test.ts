@@ -7,6 +7,7 @@ import {
   EVAL_DATASET_SCHEMA_VERSION,
   MAX_CHECKS_PER_CASE,
   MAX_EVAL_CASES,
+  MAX_JUDGE_CRITERIA_LENGTH,
   MAX_REGEX_PATTERN_LENGTH,
   findUnknownNodeIds,
   parseEvalDataset,
@@ -93,6 +94,38 @@ describe('parseEvalDataset', () => {
     expect(errorOf(withCheck({ nodeId: 'n', scorer: 'oneOf', expected: ['a', 1] }))).toMatch(
       /expected\[1\]/,
     );
+  });
+
+  it('parses llm_judge checks with a default minimum score', () => {
+    const result = parseEvalDataset(
+      dataset({
+        cases: [
+          evalCase({
+            checks: [
+              { nodeId: 'answer', scorer: 'llm_judge', criteria: 'Explains the refund policy.' },
+              { nodeId: 'answer', scorer: 'llm_judge', criteria: 'Is polite.', minScore: 5 },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.dataset.cases[0]!.checks).toEqual([
+        { scorer: 'llm_judge', nodeId: 'answer', criteria: 'Explains the refund policy.', minScore: 4 },
+        { scorer: 'llm_judge', nodeId: 'answer', criteria: 'Is polite.', minScore: 5 },
+      ]);
+    }
+  });
+
+  it('rejects llm_judge checks without usable criteria or with an off-scale minimum', () => {
+    const judge = (extra: Record<string, unknown>) =>
+      dataset({ cases: [evalCase({ checks: [{ nodeId: 'n', scorer: 'llm_judge', criteria: 'ok', ...extra }] })] });
+    expect(errorOf(judge({ criteria: ' ' }))).toMatch(/criteria must be a non-empty string/);
+    expect(errorOf(judge({ criteria: 'x'.repeat(MAX_JUDGE_CRITERIA_LENGTH + 1) }))).toMatch(/criteria exceeds/);
+    for (const minScore of [0, 6, 3.5, '4', null]) {
+      expect(errorOf(judge({ minScore }))).toMatch(/minScore must be an integer from 1 to 5/);
+    }
   });
 
   it('rejects expected values with nothing comparable left after normalization', () => {

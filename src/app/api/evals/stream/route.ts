@@ -97,7 +97,7 @@ export async function POST(request: Request): Promise<Response> {
       };
       send('started', started);
 
-      const { outcome, summary } = await runEvaluation({
+      const { outcome, summary, judgeUsage } = await runEvaluation({
         evalId,
         graph,
         dataset,
@@ -129,7 +129,7 @@ export async function POST(request: Request): Promise<Response> {
         },
       });
 
-      const summaryFrame: EvalSummaryFrame = summary;
+      const summaryFrame: EvalSummaryFrame = { ...summary, judgeUsage };
       send('summary', summaryFrame);
       const done: EvalDoneFrame = { status: outcome };
       send('done', done);

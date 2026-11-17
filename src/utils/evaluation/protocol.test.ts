@@ -98,4 +98,31 @@ describe('countModelCalls', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(countModelCalls(result.request.graph, result.request.dataset)).toBe(2);
   });
+
+  it('adds one call per llm_judge check', () => {
+    const judged = cases(3).map((evalCase, index) => ({
+      ...evalCase,
+      checks: [
+        ...evalCase.checks,
+        ...(index < 2 ? [{ nodeId: 'tpl', scorer: 'llm_judge', criteria: 'Is helpful.' }] : []),
+      ],
+    }));
+    const result = parseEvaluationRequest(
+      body({ dataset: { version: EVAL_DATASET_SCHEMA_VERSION, name: 'x', cases: judged } }),
+    );
+    expect(result.ok).toBe(true);
+    // 1 classifier x 3 cases + 2 judge checks.
+    if (result.ok) expect(countModelCalls(result.request.graph, result.request.dataset)).toBe(5);
+  });
+
+  it('counts judge calls toward the budget', () => {
+    const judgedCases = Array.from({ length: 100 }, (_, i) => ({
+      id: `c${i}`,
+      input: 'q',
+      checks: Array.from({ length: 3 }, () => ({ nodeId: 'tpl', scorer: 'llm_judge', criteria: 'x y' })),
+    }));
+    const dataset = { version: EVAL_DATASET_SCHEMA_VERSION, name: 'x', cases: judgedCases };
+    // 100 classifier calls + 300 judge calls exceed the budget.
+    expect(rejectionOf(body({ dataset }))?.code).toBe('OVER_BUDGET');
+  });
 });
