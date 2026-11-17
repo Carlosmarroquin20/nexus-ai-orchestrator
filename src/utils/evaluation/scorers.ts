@@ -23,16 +23,22 @@ export const MAX_REGEX_SUBJECT_LENGTH = 20_000;
 /** Length at which an output is shortened when quoted in a verdict's detail. */
 const DETAIL_PREVIEW_LENGTH = 120;
 
-export type CheckStatus = 'passed' | 'failed' | 'error';
+/**
+ * `error`: the check could not be evaluated (e.g. the node produced no output) and
+ * counts against the pass rate. `skipped`: the check was deliberately not
+ * evaluated (an LLM judge without a model) and counts neither way.
+ */
+export type CheckStatus = 'passed' | 'failed' | 'error' | 'skipped';
 
 export interface CheckResult {
   readonly check: EvalCheck;
-  /** `error` means the check could not be evaluated, e.g. the node produced no output. */
   readonly status: CheckStatus;
   /** The output the check inspected; `null` when the node produced none. */
   readonly actual: string | null;
   /** Human-readable reason for the verdict. */
   readonly detail: string;
+  /** Grade on the judge's 1-5 scale; `null` for deterministic checks or when no grade was produced. */
+  readonly score: number | null;
 }
 
 const preview = (text: string): string => {
@@ -50,6 +56,7 @@ const verdict = (
   status: passed ? 'passed' : 'failed',
   actual,
   detail: passed ? 'Passed.' : failure,
+  score: null,
 });
 
 /** Scores one check against the output of its node (`null` when there is none). */
@@ -60,6 +67,7 @@ export const scoreCheck = (check: EvalCheck, output: string | null): CheckResult
       status: 'error',
       actual: null,
       detail: `Node "${check.nodeId}" produced no output (failed, skipped, or not reached).`,
+      score: null,
     };
   }
 
@@ -94,6 +102,7 @@ export const scoreCheck = (check: EvalCheck, output: string | null): CheckResult
           status: 'error',
           actual: output,
           detail: `Output exceeds ${MAX_REGEX_SUBJECT_LENGTH} characters; regex checks are not applied to it.`,
+          score: null,
         };
       }
       const compiled = compileSafeRegex(check.pattern, check.flags);
@@ -104,6 +113,7 @@ export const scoreCheck = (check: EvalCheck, output: string | null): CheckResult
           status: 'error',
           actual: output,
           detail: `Regex ${compiled.field} ${compiled.error}`,
+          score: null,
         };
       }
       return verdict(

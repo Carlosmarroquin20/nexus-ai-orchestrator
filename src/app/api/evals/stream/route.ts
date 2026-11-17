@@ -25,7 +25,7 @@ import {
   MAX_FRAME_OUTPUT_LENGTH,
   parseEvaluationRequest,
 } from '@/utils/evaluation/protocol';
-import { isCasePassed } from '@/utils/evaluation/summary';
+import { caseVerdict } from '@/utils/evaluation/summary';
 import { safeJsonParse } from '@/utils/telemetryEvent';
 
 export const dynamic = 'force-dynamic';
@@ -112,7 +112,7 @@ export async function POST(request: Request): Promise<Response> {
             caseId: score.caseId,
             index,
             runOutcome,
-            passed: isCasePassed(score),
+            verdict: caseVerdict(score),
             durationMs: score.durationMs,
             costInUSD: score.costInUSD,
             totalTokens: score.totalTokens,
@@ -122,6 +122,7 @@ export async function POST(request: Request): Promise<Response> {
               status: result.status,
               detail: result.detail,
               actual: shorten(result.actual),
+              score: result.score,
             })),
           };
           send('case', frame);

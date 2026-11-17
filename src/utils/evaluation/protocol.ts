@@ -15,7 +15,7 @@ import { parseGraphDescriptor } from '../executionRequest';
 import { isRecord, isString } from '../guards';
 import { type EvalDataset, findUnknownNodeIds, parseEvalDataset } from './dataset';
 import type { CheckStatus } from './scorers';
-import type { EvalSummary } from './summary';
+import type { CaseVerdict, EvalSummary } from './summary';
 
 /** Evaluation ids are client-minted; the bound only rejects abuse. */
 export const MAX_EVAL_ID_LENGTH = 128;
@@ -127,6 +127,8 @@ export interface EvalCheckFrame {
   readonly detail: string;
   /** Inspected output, shortened to `MAX_FRAME_OUTPUT_LENGTH`; `null` when the node produced none. */
   readonly actual: string | null;
+  /** Judge grade (1-5); `null` for deterministic checks. */
+  readonly score: number | null;
 }
 
 export interface EvalCaseFrame {
@@ -134,7 +136,8 @@ export interface EvalCaseFrame {
   readonly index: number;
   /** Outcome of the case's pipeline run; checks are scored whatever it is. */
   readonly runOutcome: RunOutcome;
-  readonly passed: boolean;
+  /** `skipped` when none of the case's checks was evaluated. */
+  readonly verdict: CaseVerdict;
   readonly durationMs: number;
   readonly costInUSD: number;
   readonly totalTokens: number;

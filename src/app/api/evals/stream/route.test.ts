@@ -84,15 +84,16 @@ describe('POST /api/evals/stream', () => {
     expect(started).toEqual({ evalId: 'eval_test', datasetName: 'Smoke', caseCount: 2, mode: 'simulated' });
 
     const results = dataOf<EvalCaseFrame>(events, 'case');
-    expect(results.map((frame) => [frame.caseId, frame.passed])).toEqual([
-      ['a', true],
-      ['b', false],
+    expect(results.map((frame) => [frame.caseId, frame.verdict])).toEqual([
+      ['a', 'passed'],
+      ['b', 'failed'],
     ]);
     expect(results[1]!.checks[0]).toMatchObject({
       nodeId: 'llm',
       scorer: 'contains',
       status: 'failed',
       actual: 'Simulated LLM_CORE output.',
+      score: null,
     });
 
     const [summary] = dataOf<EvalSummary>(events, 'summary');
