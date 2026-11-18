@@ -1,12 +1,38 @@
 # Nexus AI Orchestrator
 
+[![CI](https://github.com/Carlosmarroquin20/nexus-ai-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/Carlosmarroquin20/nexus-ai-orchestrator/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A production-grade, visual node-based debugger for multi-agent AI pipelines. It lets
 engineers compose a pipeline as a graph, trace execution flow, inspect data payloads,
 and analyze per-node telemetry — latency, token consumption, and cost — across the run.
+Datasets of test cases then score the pipeline with deterministic checks and an LLM
+judge, so a prompt or model change is measured instead of guessed.
 
 Execution runs against a real backend (Google AI Studio / Gemini) when a key is
-configured, and falls back to a built-in deterministic simulator otherwise, so the
+configured, and falls back to a built-in simulator otherwise, so the
 application is fully functional with or without credentials.
+
+![Running the demo pipeline against Gemini, inspecting a node, and evaluating the pipeline on a ten-case dataset](docs/media/demo.gif)
+
+<sub>The demo pipeline run against `gemini-3.1-flash-lite`, then evaluated on the bundled
+ten-case dataset. The evaluation is sped up twelvefold.</sub>
+
+| Execution trace and per-node telemetry | Evaluation results |
+| --- | --- |
+| ![Completed pipeline run: every node shows its state, latency, tokens, and cost; the inspector shows the run's critical path and the selected agent's telemetry](docs/media/pipeline-run.png) | ![Evaluation of the support-triage dataset: 10 of 10 cases and 16 of 16 checks passed, with an LLM-judge mean of 5 out of 5, per-node and per-scorer breakdowns, and per-case latency](docs/media/evaluation.png) |
+
+## Highlights
+
+- **Live execution trace:** nodes stream their state, latency, tokens, and cost as the
+  server runs the graph level by level; the inspector shows the critical path, payloads,
+  and a run history exportable as OpenTelemetry traces.
+- **Evaluations:** run a dataset through the pipeline from the UI or the terminal, score
+  outputs with deterministic checks and an LLM judge, and compare two evaluations case by
+  case to see what a change fixed or broke.
+- **Engineering:** strict TypeScript, a framework-agnostic pure core, unit tests with a
+  coverage gate in CI, and the major decisions recorded as
+  [Architecture Decision Records](docs/adr/README.md).
 
 ## Tech stack
 
