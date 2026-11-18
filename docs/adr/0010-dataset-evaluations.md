@@ -60,10 +60,10 @@ Constraints found in the current code:
    one evaluation runs per server instance at a time (`429` otherwise), and the engine
    fails any node whose input or rendered template would exceed 200,000 characters,
    since templates and fan-in multiply text.
-5. **Results are comparable.** Each evaluation records a fingerprint of the pipeline
-   configuration (prompts and sampling settings) next to its metrics, stored locally
-   with a capped history. Two evaluations can be compared case by case, listing
-   regressions and fixes.
+5. **Results are comparable.** Each evaluation records fingerprints of the pipeline
+   configuration (prompts and sampling settings) and of the dataset, plus the model,
+   next to its metrics, stored locally with a capped history. Two evaluations can be
+   compared case by case, listing regressions and fixes.
 6. **A command-line runner** (`npm run eval`) reuses the same engine and scorers, reads
    a graph file and a dataset file, and writes a Markdown and JSON report.
 

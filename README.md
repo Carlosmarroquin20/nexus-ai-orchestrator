@@ -71,16 +71,17 @@ cp .env.example .env.local
 
 ```text
 src/
-├── app/                  # App Router: layout, workspace page, /api/runs/stream route
+├── app/                  # App Router: layout, workspace page, run and evaluation stream routes
 ├── components/
 │   ├── canvas/           # React Flow surface, custom node/edge, toolbar, palette
+│   ├── evaluation/       # Evaluations dialog: dataset choice, results, history and comparison
 │   ├── inspector/        # Telemetry, diagnostics, run history, editable config forms
 │   ├── shared/           # Layout primitives + workspace chrome
 │   └── ui/               # Low-level design-system primitives
-├── config/               # Immutable registries (node kinds, telemetry/pricing, demo)
+├── config/               # Immutable registries (node kinds, telemetry/pricing, demo, datasets)
 ├── hooks/                # Persistence, history, shortcuts, auto-layout, manipulation
-├── server/               # Server-only modules (Gemini client) — never imported client-side
-├── services/             # Run execution controller (SSE lifecycle)
+├── server/               # Server-only: pipeline engine, evaluation runner, LLM judge, Gemini client
+├── services/             # Run and evaluation controllers (SSE lifecycle)
 ├── store/                # Zustand store: slices + combined store and selectors
 ├── test/                 # Test factories
 ├── types/                # Domain models (graph, execution contract)
@@ -131,6 +132,53 @@ Output flows downstream: each node's input is the concatenation of its predecess
 outputs (a fixed seed for sources). A failed node marks its transitive descendants
 `skipped`. `failRate` (toolbar) injects faults to exercise that propagation.
 
+### Evaluations
+
+A single run shows what one input did. An evaluation answers whether a prompt or model
+change made the pipeline better or worse: it runs a fixed dataset of cases through the
+pipeline and scores each one ([ADR 0010](docs/adr/0010-dataset-evaluations.md)).
+
+Open it with **Evaluate** in the header, pick the bundled *Support triage* dataset (written
+for the demo pipeline) or import your own JSON file, and run it. A dataset lists cases, and
+each case checks the output of named nodes:
+
+```json
+{
+  "version": 1,
+  "name": "Support triage",
+  "cases": [
+    {
+      "id": "billing-refund",
+      "input": "How can I get a refund for my annual plan?",
+      "checks": [
+        { "nodeId": "demo-classifier", "scorer": "equals", "expected": "billing" },
+        { "nodeId": "demo-formatter", "scorer": "contains", "expected": "refund" },
+        { "nodeId": "demo-formatter", "scorer": "llm_judge", "criteria": "Explains how to request a refund.", "minScore": 4 }
+      ]
+    }
+  ]
+}
+```
+
+- **Scorers:** `equals`, `contains`, `oneOf` (on normalized text) and `regex` (run with RE2,
+  so a pattern cannot hang the server) are deterministic. `llm_judge` asks the model to grade
+  free text from 1 to 5 against the case's criteria and passes at `minScore` (default 4). The
+  graded answer is fenced as untrusted data; every grade comes with its reason so it can be
+  audited.
+- **Server-side scoring:** `POST /api/evals/stream` runs the cases one at a time through the
+  same engine as a run and scores the full outputs on the server, streaming each case as it
+  finishes. One evaluation runs per server at a time, and a request is capped at 300 model
+  calls (pipeline calls plus judge calls).
+- **Results:** case and check pass rates, per-node and per-scorer breakdowns, the judge's mean
+  grade, p50/p95 case latency, and cost. Grading cost is reported apart from the pipeline's.
+- **Comparison:** the last 10 finished evaluations are kept in the browser with a fingerprint
+  of the pipeline (prompts, labels, sampling, wiring), the dataset, and the model. Any two can
+  be compared case by case — regressions, fixes, and checks that moved — with the differences
+  between them labeled.
+
+In simulated mode outputs are placeholders, so scores measure the harness rather than the
+prompts, and judge checks are reported as skipped instead of counted. The panel says so.
+
 ## Features
 
 - **Editing:** typed, per-variant configuration forms; cross-node `llmCoreRef` binding.
@@ -142,6 +190,8 @@ outputs (a fixed seed for sources). A failed node marks its transitive descendan
 - **Persistence:** the graph auto-saves to `localStorage` and survives reloads; import/export
   as JSON. Telemetry is never persisted (it is execution state, rehydrated to pristine).
 - **Auto-layout:** topological layer layout.
+- **Evaluations:** run a dataset of test cases against the pipeline, score outputs with
+  deterministic checks or an LLM judge, and compare evaluations across prompt and model changes.
 - **Observability:** export any recorded run as an **OpenTelemetry (OTLP/JSON) trace** — a root
   span for the run and a child span per node, with token/cost/latency attributes — ingestible by
   Jaeger, Tempo, or Grafana.
@@ -168,6 +218,9 @@ Shortcuts are suppressed while typing in a field.
   bound to it through `llmCoreRef`. Its `provider`/`model` are informational — real
   execution uses the server-side `GEMINI_MODEL`.
 - A run request is capped at 1 MB and 200 nodes; larger requests are rejected with `413`.
+  An evaluation request is capped at 2.5 MB, 100 cases, and 300 model calls; a second
+  concurrent evaluation is rejected with `429`.
+- LLM-judge grades are noisy and can be biased. Treat them as a signal to review, not a verdict.
 - SSE on serverless platforms may hit request-duration limits; local `npm run dev` is unaffected.
 - Each run can incur real API cost. Before exposing the app publicly, enable the access gate
   (`NEXUS_AUTH_USER` / `NEXUS_AUTH_PASSWORD`) and serve it over HTTPS. The gate is a single
