@@ -52,5 +52,10 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Evaluation runner smoke test
+        # Simulated, without a gate: this exercises the command-line runner end to end
+        # (inputs, engine, scoring, report files), not the quality of the prompts.
+        run: npm run eval -- --simulate --out "$RUNNER_TEMP/eval-reports"
+
       - name: Build
         run: npm run build
