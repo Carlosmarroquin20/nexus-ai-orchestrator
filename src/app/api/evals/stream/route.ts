@@ -12,11 +12,11 @@
  */
 
 import { enforceAccess } from '@/server/accessGate';
+import { toCaseFrame } from '@/server/evaluation/caseFrame';
 import { runEvaluation } from '@/server/evaluation/runEvaluation';
 import { createEventStream, readJsonBody } from '@/server/http/eventStream';
 import { resolveLlmProvider } from '@/server/llm/resolveProvider';
 import {
-  type EvalCaseFrame,
   type EvalCaseStartedFrame,
   type EvalDoneFrame,
   type EvalStartedFrame,
@@ -25,7 +25,6 @@ import {
   MAX_FRAME_OUTPUT_LENGTH,
   parseEvaluationRequest,
 } from '@/utils/evaluation/protocol';
-import { caseVerdict } from '@/utils/evaluation/summary';
 import { safeJsonParse } from '@/utils/telemetryEvent';
 
 export const dynamic = 'force-dynamic';
@@ -55,11 +54,6 @@ const REJECTION_STATUS: Readonly<Record<EvaluationRejection, number>> = {
  */
 const MAX_CONCURRENT_EVALUATIONS = 1;
 let activeEvaluations = 0;
-
-const shorten = (text: string | null): string | null =>
-  text === null || text.length <= MAX_FRAME_OUTPUT_LENGTH
-    ? text
-    : `${text.slice(0, MAX_FRAME_OUTPUT_LENGTH)}…`;
 
 export async function POST(request: Request): Promise<Response> {
   // Re-checked here although the proxy also gates this path: an evaluation makes
@@ -108,25 +102,8 @@ export async function POST(request: Request): Promise<Response> {
           const frame: EvalCaseStartedFrame = { caseId, index };
           send('case_started', frame);
         },
-        onCaseScored: ({ index, runOutcome, score }) => {
-          const frame: EvalCaseFrame = {
-            caseId: score.caseId,
-            index,
-            runOutcome,
-            verdict: caseVerdict(score),
-            durationMs: score.durationMs,
-            costInUSD: score.costInUSD,
-            totalTokens: score.totalTokens,
-            checks: score.checks.map((result) => ({
-              nodeId: result.check.nodeId,
-              scorer: result.check.scorer,
-              status: result.status,
-              detail: result.detail,
-              actual: shorten(result.actual),
-              score: result.score,
-            })),
-          };
-          send('case', frame);
+        onCaseScored: (evaluated) => {
+          send('case', toCaseFrame(evaluated, { maxOutputLength: MAX_FRAME_OUTPUT_LENGTH }));
         },
       });
 
