@@ -115,6 +115,25 @@ describe('compareEvaluations', () => {
     ]);
   });
 
+  it('lists changed cases in reading order, including held verdicts whose checks moved', () => {
+    const comparison = compareEvaluations(
+      record([
+        caseRecord('steady', 'failed', [check('failed'), check('failed', null, 'out')]),
+        caseRecord('quiet', 'passed', [check('passed')]),
+        caseRecord('up', 'failed'),
+        caseRecord('down', 'passed'),
+      ]),
+      record([
+        caseRecord('steady', 'failed', [check('failed'), check('passed', null, 'out')]),
+        caseRecord('quiet', 'passed', [check('passed')]),
+        caseRecord('up', 'passed'),
+        caseRecord('down', 'failed'),
+      ]),
+    );
+    expect(comparison.changed.map((entry) => entry.caseId)).toEqual(['down', 'up', 'steady']);
+    expect(comparison.checksMovedCount).toBe(1);
+  });
+
   it('does not match checks by position when the case checks differ', () => {
     const comparison = compareEvaluations(
       record([caseRecord('a', 'passed', [check('passed', null, 'cls')])]),

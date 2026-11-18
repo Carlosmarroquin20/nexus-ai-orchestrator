@@ -17,6 +17,10 @@
  * same checks (same node and scorer at every position); otherwise positions do
  * not identify the same check and matching them would invent changes.
  *
+ * `changed` lists, in reading order, every case worth looking at: verdict
+ * changes first (regressions before fixes), then cases whose verdict held but a
+ * check moved, so any change in the check pass rate can be traced to its cases.
+ *
  * The comparison also says whether the dataset, the pipeline, and the model are
  * the same on both sides. It never refuses to compare: it labels what differs,
  * and the reader decides what the difference means. Pure.
@@ -78,8 +82,21 @@ export interface EvalComparison {
   readonly metrics: ComparisonMetrics;
   /** Candidate cases in their order, then the cases only the baseline ran. */
   readonly cases: readonly CaseComparison[];
+  /** Cases whose verdict or any check changed, in reading order (see above). */
+  readonly changed: readonly CaseComparison[];
   readonly counts: Readonly<Record<CaseChange, number>>;
+  /** Unchanged cases in which at least one check changed status or grade. */
+  readonly checksMovedCount: number;
 }
+
+/** Order in which changed cases are listed: what broke first. */
+const CHANGE_ORDER: readonly CaseChange[] = [
+  'regressed',
+  'fixed',
+  'not_comparable',
+  'only_in_candidate',
+  'only_in_baseline',
+];
 
 const rate = (passed: number, total: number): number | null => (total === 0 ? null : passed / total);
 
@@ -174,12 +191,20 @@ export const compareEvaluations = (baseline: EvalRecord, candidate: EvalRecord):
   };
   for (const entry of cases) counts[entry.change] += 1;
 
+  const checksMoved = cases.filter((entry) => entry.change === 'unchanged' && entry.checkChanges.length > 0);
+  const changed = [
+    ...CHANGE_ORDER.flatMap((change) => cases.filter((entry) => entry.change === change)),
+    ...checksMoved,
+  ];
+
   return {
     sameDataset: baseline.datasetFingerprint === candidate.datasetFingerprint,
     samePipeline: baseline.pipelineFingerprint === candidate.pipelineFingerprint,
     sameModel: baseline.mode === candidate.mode && baseline.model === candidate.model,
     metrics: compareMetrics(baseline.metrics, candidate.metrics),
     cases,
+    changed,
     counts,
+    checksMovedCount: checksMoved.length,
   };
 };
