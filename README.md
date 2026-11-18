@@ -40,7 +40,7 @@ cp .env.example .env.local
 | Variable              | Required | Description                                                              |
 | --------------------- | -------- | ------------------------------------------------------------------------ |
 | `GEMINI_API_KEY`      | No       | Google AI Studio key. When unset, execution falls back to the simulator. |
-| `GEMINI_MODEL`        | No       | Override the Gemini model (default `gemini-2.0-flash`).                  |
+| `GEMINI_MODEL`        | No       | Override the Gemini model (default `gemini-3.1-flash-lite`).             |
 | `NEXUS_AUTH_USER`     | No       | With `NEXUS_AUTH_PASSWORD`, enables the HTTP Basic access gate.          |
 | `NEXUS_AUTH_PASSWORD` | No       | With `NEXUS_AUTH_USER`, enables the HTTP Basic access gate.              |
 

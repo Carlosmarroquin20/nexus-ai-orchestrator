@@ -10,7 +10,7 @@
 import { createGeminiProvider } from './geminiProvider';
 import type { LlmProvider } from './types';
 
-const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
 export const resolveLlmProvider = (): LlmProvider | null => {
   const apiKey = process.env['GEMINI_API_KEY'];
