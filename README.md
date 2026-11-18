@@ -66,12 +66,14 @@ cp .env.example .env.local
 | `npm test`              | Run the Vitest suite                   |
 | `npm run test:watch`    | Vitest in watch mode                   |
 | `npm run test:coverage` | Vitest with a coverage gate (as in CI) |
+| `npm run eval`          | Evaluate a dataset from the terminal   |
 
 ## Architecture
 
 ```text
 src/
 ├── app/                  # App Router: layout, workspace page, run and evaluation stream routes
+├── cli/                  # `npm run eval`: command-line evaluation runner
 ├── components/
 │   ├── canvas/           # React Flow surface, custom node/edge, toolbar, palette
 │   ├── evaluation/       # Evaluations dialog: dataset choice, results, history and comparison
@@ -179,6 +181,25 @@ each case checks the output of named nodes:
 In simulated mode outputs are placeholders, so scores measure the harness rather than the
 prompts, and judge checks are reported as skipped instead of counted. The panel says so.
 
+#### From the terminal
+
+`npm run eval` runs the same evaluation without the application: same engine, scorers,
+judge, and limits. It reads the model settings from the environment or `.env.local`, prints
+one line per case, and writes a Markdown and a JSON report to `eval-reports/` (ignored by
+git). The JSON keeps every check's full output; the Markdown lists each failing check with
+the output it inspected.
+
+```bash
+npm run eval                                            # bundled dataset, demo pipeline
+npm run eval -- --graph my-pipeline.json --dataset cases.json --fail-under 90
+```
+
+`--graph` takes a file exported from the editor, `--dataset` a bundled dataset id or a file,
+and `--simulate` forces the simulator. `--fail-under` turns the case pass rate into an exit
+code, so an evaluation can gate a change in CI. Exit codes: `0` done, `1` below the gate or
+failed, `2` invalid input, `130` interrupted. Ctrl+C abandons the case in progress and still
+writes the report of the cases scored so far.
+
 ## Features
 
 - **Editing:** typed, per-variant configuration forms; cross-node `llmCoreRef` binding.
@@ -191,7 +212,8 @@ prompts, and judge checks are reported as skipped instead of counted. The panel 
   as JSON. Telemetry is never persisted (it is execution state, rehydrated to pristine).
 - **Auto-layout:** topological layer layout.
 - **Evaluations:** run a dataset of test cases against the pipeline, score outputs with
-  deterministic checks or an LLM judge, and compare evaluations across prompt and model changes.
+  deterministic checks or an LLM judge, and compare evaluations across prompt and model changes,
+  from the UI or from the terminal with Markdown and JSON reports.
 - **Observability:** export any recorded run as an **OpenTelemetry (OTLP/JSON) trace** — a root
   span for the run and a child span per node, with token/cost/latency attributes — ingestible by
   Jaeger, Tempo, or Grafana.
@@ -219,7 +241,8 @@ Shortcuts are suppressed while typing in a field.
   execution uses the server-side `GEMINI_MODEL`.
 - A run request is capped at 1 MB and 200 nodes; larger requests are rejected with `413`.
   An evaluation request is capped at 2.5 MB, 100 cases, and 300 model calls; a second
-  concurrent evaluation is rejected with `429`.
+  concurrent evaluation is rejected with `429`. `npm run eval` applies the same case and
+  model-call limits.
 - LLM-judge grades are noisy and can be biased. Treat them as a signal to review, not a verdict.
 - SSE on serverless platforms may hit request-duration limits; local `npm run dev` is unaffected.
 - Each run can incur real API cost. Before exposing the app publicly, enable the access gate
