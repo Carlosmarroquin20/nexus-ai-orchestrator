@@ -36,6 +36,11 @@ export interface SelectedDataset {
 
 export interface EvaluationStore {
   readonly selection: SelectedDataset | null;
+  /**
+   * The last imported dataset, kept after switching to a bundled one so it stays
+   * selectable without importing the file again.
+   */
+  readonly imported: SelectedDataset | null;
   readonly progress: EvalProgress;
   readonly history: readonly EvalRecord[];
   readonly historyLoaded: boolean;
@@ -61,11 +66,17 @@ export const useEvaluationStore = create<EvaluationStore>()(
   devtools(
     (set, get) => ({
       selection: null,
+      imported: null,
       progress: IDLE_PROGRESS,
       history: [],
       historyLoaded: false,
 
-      selectDataset: (selection) => set({ selection }, false, 'evaluation/selectDataset'),
+      selectDataset: (selection) =>
+        set(
+          selection?.source === 'imported' ? { selection, imported: selection } : { selection },
+          false,
+          'evaluation/selectDataset',
+        ),
 
       updateProgress: (update) =>
         set((state) => ({ progress: update(state.progress) }), false, 'evaluation/updateProgress'),
