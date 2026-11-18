@@ -40,3 +40,13 @@ export const formatTimestamp = (epochMs: number | null): string =>
   epochMs === null
     ? EM_DASH
     : new Date(epochMs).toLocaleTimeString('en-US', { hour12: false });
+
+/** Short date and 24-hour time (e.g. `Nov 17, 14:05`) for records that span days. */
+export const formatDateTime = (epochMs: number): string =>
+  new Date(epochMs).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });

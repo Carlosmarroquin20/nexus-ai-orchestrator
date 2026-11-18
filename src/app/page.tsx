@@ -5,6 +5,7 @@ import type { JSX } from 'react';
 
 import { CommandPalette } from '@/components/canvas/CommandPalette';
 import { GraphCanvas } from '@/components/canvas/GraphCanvas';
+import { EvaluationPanel } from '@/components/evaluation/EvaluationPanel';
 import { InspectorPanel } from '@/components/inspector/InspectorPanel';
 import { WorkspaceActions } from '@/components/shared/WorkspaceActions';
 import { WorkspaceHeader } from '@/components/shared/WorkspaceHeader';
@@ -34,7 +35,15 @@ export default function WorkspacePage(): JSX.Element {
   return (
     <ReactFlowProvider>
       <div className="flex h-dvh flex-col overflow-hidden bg-background">
-        <WorkspaceHeader actions={<WorkspaceActions />} />
+        <WorkspaceHeader
+          actions={
+            <div className="flex items-center gap-1.5">
+              <EvaluationPanel />
+              <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+              <WorkspaceActions />
+            </div>
+          }
+        />
         <main className="flex min-h-0 flex-1">
           <div className="relative min-w-0 flex-1">
             <GraphCanvas />
