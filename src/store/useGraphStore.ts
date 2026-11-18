@@ -17,12 +17,7 @@ import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 
-import {
-  type NexusEdge,
-  type NexusNode,
-  type PipelineRun,
-  type PipelineRunMetrics,
-} from '@/types/graph';
+import { type NexusEdge, type NexusNode, type PipelineRun } from '@/types/graph';
 
 import { createDataFlowSlice, type DataFlowSlice } from './slices/dataFlowSlice';
 import { createGraphUiSlice, type GraphUiSlice } from './slices/graphUiSlice';
@@ -57,6 +52,18 @@ export const selectSelectedNode = (state: GraphStore): NexusNode | null => {
 /** Resolves the active run record, or `null` when no run is in flight. */
 export const selectActiveRun = (state: GraphStore): PipelineRun | null =>
   state.activeRunId === null ? null : (state.runsById[state.activeRunId] ?? null);
+
+/**
+ * The run whose metrics the inspector summarizes: the active run while one is in
+ * flight, otherwise the most recent recorded run, so a finished run's aggregate
+ * metrics stay visible after it ends. `null` when no run is recorded.
+ */
+export const selectLatestRun = (state: GraphStore): PipelineRun | null => {
+  const active = selectActiveRun(state);
+  if (active !== null) return active;
+  const latestId = state.runOrder.at(-1);
+  return latestId === undefined ? null : (state.runsById[latestId] ?? null);
+};
 
 const selectGraphActions = (state: GraphStore) => ({
   addNode: state.addNode,
@@ -115,8 +122,7 @@ export const useRunHistory = (): PipelineRun[] =>
     ),
   );
 
-export const useActiveRunMetrics = (): PipelineRunMetrics | null =>
-  useGraphStore((state) => selectActiveRun(state)?.metrics ?? null);
+export const useLatestRun = (): PipelineRun | null => useGraphStore(selectLatestRun);
 
 /**
  * Action bundle with a stable object identity (via `useShallow`). Action

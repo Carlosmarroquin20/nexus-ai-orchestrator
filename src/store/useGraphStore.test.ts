@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { makeEdge, makeNode } from '@/test/factories';
 import { NODE_KIND, asNodeId, asRunId } from '@/types/graph';
-import { useGraphStore } from '@/store/useGraphStore';
+import { selectLatestRun, useGraphStore } from '@/store/useGraphStore';
 
 /**
  * Store/state-machine tests. The Zustand store runs in Node (devtools no-ops
@@ -274,6 +274,24 @@ describe('dataFlow: run lifecycle', () => {
     const active = store().beginRun();
     store().clearRunHistory();
     expect(store().runOrder).toEqual([active]);
+  });
+
+  it('selectLatestRun keeps the last run summarized after it ends', () => {
+    expect(selectLatestRun(store())).toBeNull();
+
+    const first = store().beginRun();
+    expect(selectLatestRun(store())?.id).toBe(first);
+    store().finalizeRun('completed');
+    expect(store().activeRunId).toBeNull();
+    expect(selectLatestRun(store())).toMatchObject({ id: first, status: 'completed' });
+
+    const second = store().beginRun();
+    expect(selectLatestRun(store())).toMatchObject({ id: second, status: 'running' });
+    store().finalizeRun('failed');
+    expect(selectLatestRun(store())).toMatchObject({ id: second, status: 'failed' });
+
+    store().clearRunHistory();
+    expect(selectLatestRun(store())).toBeNull();
   });
 
   it('setFailRate clamps to [0, 1]', () => {
