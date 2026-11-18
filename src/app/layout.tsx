@@ -23,8 +23,8 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
   // `suppressHydrationWarning` guards the statically-applied `dark` class against
-  // future client-side theme reconciliation; fonts resolve to the system stack
-  // declared in the Tailwind config until `--font-sans`/`--font-mono` are wired.
+  // future client-side theme reconciliation; fonts resolve to the system stacks
+  // defined as `--font-sans`/`--font-mono` in globals.css.
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className="font-sans">{children}</body>

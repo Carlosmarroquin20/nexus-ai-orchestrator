@@ -9,6 +9,19 @@
  * retained for completeness and future theming.
  */
 @layer base {
+  /*
+   * Font stacks behind Tailwind's `font-sans` / `font-mono`. They must be defined:
+   * a `var()` that resolves to nothing invalidates the whole `font-family`
+   * declaration, and the browser falls back to its default serif face. System
+   * fonts keep the build free of font downloads.
+   */
+  :root {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+      Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, 'Cascadia Code', Menlo, Consolas, 'Liberation Mono',
+      monospace;
+  }
+
   :root {
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
